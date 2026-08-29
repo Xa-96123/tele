@@ -19,14 +19,24 @@ Mac 上已经登录 Telegram 时，优先用账号授权：验证码会出现在
 
 ## 本地运行
 
-需要 Node.js 20+。
+需要 Node.js 20+。在项目目录里安装并启动（不要在上层 `code` 目录执行）：
 
 ```bash
+cd ~/Desktop/code/tele
+rm -rf node_modules .next
 npm install
 npm run dev
 ```
 
 浏览器打开 [http://127.0.0.1:43141](http://127.0.0.1:43141)。
+
+Mac 上如果出现 `@next/swc-darwin-arm64` 损坏或 Turbopack 不可用，多半是 `node_modules` 不完整，或上层目录有多余的 `package-lock.json`。删掉依赖后在 **tele** 目录重新 `npm install`。开发脚本已改用 Webpack，不依赖 Turbopack 原生绑定。
+
+如果提示 lockfile 在 `/Users/你的用户名/Desktop/code`：
+
+```bash
+rm -f ~/Desktop/code/package-lock.json ~/Desktop/code/package.json
+```
 
 ```bash
 npm test
