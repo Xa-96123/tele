@@ -12,6 +12,7 @@ import {
 import { toast } from "sonner";
 import { mergeCatalog, recountChannel } from "@/lib/catalog";
 import { buildDemoCatalog } from "@/lib/demo-data";
+import { readAccountAuth, writeAccountAuth } from "@/lib/account-session";
 import type {
   CatalogState,
   ChannelRecord,
@@ -39,6 +40,7 @@ type CatalogContextValue = {
   syncOne: (username: string, more?: boolean) => Promise<boolean>;
   syncAll: () => Promise<void>;
   importText: (text: string) => Promise<boolean>;
+  ingestSyncResult: (result: SyncResult, more?: boolean) => void;
   removeChannel: (username: string) => void;
   loadDemo: () => void;
   clearAll: () => void;
@@ -137,6 +139,9 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
           lastBefore: result.nextBefore,
           lastError: undefined,
           status: "idle",
+          source: result.channel.source ?? existing?.source ?? base.source,
+          peerId: result.channel.peerId ?? existing?.peerId ?? base.peerId,
+          isPrivate: result.channel.isPrivate ?? existing?.isPrivate,
           postCount: (more ? base.postCount : 0) + result.posts.length,
         });
         const channels = existing
@@ -160,6 +165,13 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
         return false;
       }
 
+      if (current?.source === "export") {
+        toast.message("导出频道无法在线刷新", {
+          description: "请重新导入 Telegram 桌面版的 result.json。",
+        });
+        return false;
+      }
+
       updateCatalog((prev) => ({
         ...prev,
         channels: prev.channels.map((c) =>
@@ -170,18 +182,51 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
       }));
 
       try {
-        const res = await fetch("/api/channels/sync", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            username,
-            before: more ? current?.lastBefore : undefined,
-            pages: more ? 2 : 3,
-          }),
-        });
-        const data = (await res.json()) as SyncResult & { error?: string };
-        if (!res.ok) {
-          throw new Error(data.error || "同步失败");
+        let data: SyncResult & { error?: string };
+        if (current?.source === "account") {
+          const auth = readAccountAuth();
+          if (!auth?.session) {
+            throw new Error("请先在「已登录账号」里完成验证。");
+          }
+          const res = await fetch("/api/telegram/account/sync", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              session: auth.session,
+              apiId: auth.apiId,
+              apiHash: auth.apiHash,
+              username: current.username,
+              peerId: current.peerId,
+              offsetId: more && current.lastBefore ? Number(current.lastBefore) : undefined,
+              limit: more ? 60 : 80,
+            }),
+          });
+          const payload = (await res.json()) as {
+            result?: SyncResult;
+            session?: string;
+            error?: string;
+          };
+          if (!res.ok || !payload.result) {
+            throw new Error(payload.error || "同步失败");
+          }
+          if (payload.session) {
+            writeAccountAuth({ ...auth, session: payload.session });
+          }
+          data = payload.result;
+        } else {
+          const res = await fetch("/api/channels/sync", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              username,
+              before: more ? current?.lastBefore : undefined,
+              pages: more ? 2 : 3,
+            }),
+          });
+          data = (await res.json()) as SyncResult & { error?: string };
+          if (!res.ok) {
+            throw new Error(data.error || "同步失败");
+          }
         }
         applySync(data.channel.username, data, more);
         toast.success(
@@ -241,7 +286,9 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
   );
 
   const syncAll = useCallback(async () => {
-    const targets = snapshot.channels.filter((c) => !c.isDemo);
+    const targets = snapshot.channels.filter(
+      (c) => !c.isDemo && c.source !== "export",
+    );
     if (!targets.length) {
       toast.message("没有可同步的公开频道");
       return;
@@ -250,6 +297,22 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
       await syncOne(channel.username);
     }
   }, [syncOne]);
+
+  const ingestSyncResult = useCallback(
+    (result: SyncResult, more = false) => {
+      applySync(result.channel.username, result, more);
+      toast.success(
+        `读到 ${result.posts.length} 条帖子，识别出 ${result.titles.length} 部影片`,
+        {
+          description:
+            result.skipped > 0
+              ? `另有 ${result.skipped} 条不像影视资源，已跳过。`
+              : result.channel.title,
+        },
+      );
+    },
+    [applySync],
+  );
 
   const importText = useCallback(async (text: string) => {
     const res = await fetch("/api/parse", {
@@ -361,6 +424,7 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
       syncOne,
       syncAll,
       importText,
+      ingestSyncResult,
       removeChannel,
       loadDemo,
       clearAll,
@@ -375,6 +439,7 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
       syncOne,
       syncAll,
       importText,
+      ingestSyncResult,
       removeChannel,
       loadDemo,
       clearAll,

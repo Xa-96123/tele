@@ -25,6 +25,8 @@ export type SourceLink = {
   label?: string;
 };
 
+export type ChannelSource = "preview" | "account" | "export" | "demo";
+
 export type ChannelInfo = {
   username: string;
   title: string;
@@ -32,6 +34,9 @@ export type ChannelInfo = {
   avatarUrl?: string;
   subscribers?: string;
   isDemo?: boolean;
+  source?: ChannelSource;
+  peerId?: string;
+  isPrivate?: boolean;
 };
 
 export type ChannelRecord = ChannelInfo & {
@@ -107,8 +112,12 @@ export type SyncResult = {
   fetchedPages: number;
 };
 
-export type ParseTextResult = {
-  titles: TitleRecord[];
-  skipped: number;
-  posts: number;
+export type AccountChannel = {
+  id: string;
+  username: string;
+  title: string;
+  isPrivate: boolean;
+  kind: "channel" | "group";
+  peerId: string;
+  subscribers?: string;
 };

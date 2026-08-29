@@ -35,6 +35,9 @@ import { normalizeChannelUsername } from "@/lib/channel";
 import { DEMO_IMPORT_SAMPLE } from "@/lib/demo-data";
 import { catalogToCsv, downloadText } from "@/lib/export";
 import { formatRelativeTime } from "@/lib/format";
+import { AccountPanel } from "@/components/account-panel";
+import { ExportPanel } from "@/components/export-panel";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 export function ChannelManager() {
   const {
@@ -96,7 +99,7 @@ export function ChannelManager() {
             频道
           </h1>
           <p className="mt-1 max-w-xl text-sm text-muted-foreground">
-            添加公开频道后，影渠会读取 t.me/s 网页预览、解析片名并与已有片库去重合并。不需要 Bot Token。
+            Mac 上已经登录 Telegram 的话，用验证码授权即可读取你加入的频道；也可以导入桌面版官方导出。公开频道仍可用网页预览。
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -115,33 +118,48 @@ export function ChannelManager() {
         </div>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>添加公开频道</CardTitle>
-          <CardDescription>
-            支持 @username、https://t.me/username 或 https://t.me/s/username。私密频道无法通过网页预览读取。
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={onAdd} className="flex flex-col gap-2 sm:flex-row">
-            <Input
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              placeholder="@moviehub 或 t.me/s/moviehub"
-              className="h-9"
-              aria-label="频道用户名"
-            />
-            <Button type="submit" disabled={adding} className="sm:w-36">
-              {adding ? (
-                <Loader2 data-icon="inline-start" className="animate-spin" />
-              ) : (
-                <Plus data-icon="inline-start" />
-              )}
-              提取并汇总
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
+      <Tabs defaultValue="account">
+        <TabsList variant="line" className="w-full max-w-xl">
+          <TabsTrigger value="account">已登录账号</TabsTrigger>
+          <TabsTrigger value="export">桌面导出</TabsTrigger>
+          <TabsTrigger value="preview">公开预览</TabsTrigger>
+        </TabsList>
+        <TabsContent value="account" className="mt-4">
+          <AccountPanel />
+        </TabsContent>
+        <TabsContent value="export" className="mt-4">
+          <ExportPanel />
+        </TabsContent>
+        <TabsContent value="preview" className="mt-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>添加公开频道</CardTitle>
+              <CardDescription>
+                支持 @username、https://t.me/username 或 https://t.me/s/username。无需登录，但私密频道读不到。
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={onAdd} className="flex flex-col gap-2 sm:flex-row">
+                <Input
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  placeholder="@moviehub 或 t.me/s/moviehub"
+                  className="h-9"
+                  aria-label="频道用户名"
+                />
+                <Button type="submit" disabled={adding} className="sm:w-36">
+                  {adding ? (
+                    <Loader2 data-icon="inline-start" className="animate-spin" />
+                  ) : (
+                    <Plus data-icon="inline-start" />
+                  )}
+                  提取并汇总
+                </Button>
+              </form>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
 
       <div className="grid gap-3">
         {state.channels.length === 0 ? (
@@ -178,6 +196,15 @@ export function ChannelManager() {
                       {channel.isDemo ? (
                         <Badge variant="secondary">演示</Badge>
                       ) : null}
+                      {channel.source === "account" ? (
+                        <Badge variant="secondary">账号</Badge>
+                      ) : null}
+                      {channel.source === "export" ? (
+                        <Badge variant="secondary">导出</Badge>
+                      ) : null}
+                      {channel.isPrivate ? (
+                        <Badge variant="outline">私密</Badge>
+                      ) : null}
                       {channel.status === "syncing" ? (
                         <Badge>同步中</Badge>
                       ) : null}
@@ -207,7 +234,11 @@ export function ChannelManager() {
                   <Button
                     variant="outline"
                     size="sm"
-                    disabled={channel.status === "syncing" || channel.isDemo}
+                    disabled={
+                      channel.status === "syncing" ||
+                      channel.isDemo ||
+                      channel.source === "export"
+                    }
                     onClick={() => syncOne(channel.username)}
                   >
                     同步最新
