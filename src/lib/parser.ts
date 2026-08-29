@@ -111,17 +111,9 @@ export function classifyLink(url: string): LinkKind | null {
   if (u.includes("mega.nz") || u.includes("mega.io")) return "mega";
   if (u.includes("drive.google.com")) return "google";
 
-  if (
-    u.includes("telegram.org") ||
-    u.includes("t.me/s/") ||
-    u.includes("t.me/joinchat") ||
-    u.includes("t.me/+") ||
-    /^https?:\/\/t\.me\/[a-z0-9_]+\/?$/i.test(raw)
-  ) {
+  if (u.includes("telegram.org") || u.includes("t.me/")) {
     return null;
   }
-
-  if (/^https?:\/\/t\.me\/[a-z0-9_]+\/\d+/i.test(raw)) return "telegram";
   if (/^https?:\/\//i.test(raw)) return "other";
   return null;
 }
@@ -350,20 +342,29 @@ function extractTitles(
 }
 
 function hasResourceSignal(input: {
+  text: string;
   title: string;
   year?: number;
   quality?: string;
   links: SourceLink[];
   sizeLabel?: string;
   douban?: number;
+  imdb?: number;
 }): boolean {
-  const strong =
-    Boolean(input.year) ||
-    Boolean(input.quality) ||
-    input.links.length > 0 ||
-    Boolean(input.sizeLabel) ||
-    Boolean(input.douban);
-  return Boolean(input.title) && strong;
+  const strongLinks = input.links.filter(
+    (link) => link.kind !== "other" && link.kind !== "telegram",
+  );
+  const bookTitle = /《.+》/.test(input.text);
+  const mediaHint =
+    /电影|剧集|电视剧|美剧|韩剧|日剧|动漫|番剧|纪录片|纪录|磁力|网盘|蓝光|BluRay|WEB-?DL|WEBRip|REMUX|1080p|2160p|720p|480p|\b4K\b|\b8K\b/i.test(
+      input.text,
+    );
+  if (strongLinks.length > 0) return true;
+  if (input.quality || input.sizeLabel) return true;
+  if (input.douban || input.imdb) return true;
+  if (bookTitle && (input.year || mediaHint)) return true;
+  if (mediaHint && input.year) return true;
+  return false;
 }
 
 export function parsePostToTitle(
@@ -396,12 +397,14 @@ export function parsePostToTitle(
 
   if (
     !hasResourceSignal({
+      text,
       title: names.title,
       year,
       quality,
       links,
       sizeLabel: size?.label,
       douban,
+      imdb,
     })
   ) {
     return null;

@@ -88,6 +88,16 @@ test("classifies cloud links and ignores channel invites", () => {
   );
 });
 
+test("skips telegram news posts with only t.me links", () => {
+  const news = parsePostToTitle(
+    makePost(
+      `For all the details on these new features, check out our blog:\nhttps://telegram.org/blog/hello`,
+      ["https://t.me/telegram/445", "https://telegram.org/blog/hello"],
+    ),
+  );
+  assert.equal(news, null);
+});
+
 test("merges duplicate titles from two channels", () => {
   const a = parsePostToTitle(
     makePost("《寄生虫》(2019)\n1080p BluRay\nhttps://pan.quark.cn/s/a"),
