@@ -19,7 +19,6 @@ import {
 import { summarizeCatalog } from "@/lib/catalog";
 import {
   catalogExcelFilename,
-  downloadCatalogExcel,
   flattenTitle,
   TITLE_COLUMNS,
   type TitleColumnKey,
@@ -68,7 +67,7 @@ function matchesQuery(title: TitleRecord, query: string): boolean {
 }
 
 export function StatsView() {
-  const { ready, state, selectedId, setSelectedId, selectedTitle } =
+  const { ready, state, selectedId, setSelectedId, selectedTitle, loadDemo } =
     useCatalog();
   const [query, setQuery] = useState("");
   const stats = useMemo(
@@ -91,16 +90,14 @@ export function StatsView() {
     { label: "识别到的链接", value: stats.linkCount },
   ];
 
-  function exportExcel() {
+  async function exportExcel() {
     if (filtered.length === 0) {
       toast.error("没有可导出的影片");
       return;
     }
     try {
-      downloadCatalogExcel(
-        filtered,
-        catalogExcelFilename(filtered.length),
-      );
+      const { downloadCatalogExcel } = await import("@/lib/export-xlsx");
+      downloadCatalogExcel(filtered, catalogExcelFilename(filtered.length));
       toast.success(
         `已导出 ${filtered.length} 部影片（含版本明细工作表）`,
       );
@@ -173,6 +170,11 @@ export function StatsView() {
                   ? "到「频道」页添加 Telegram 频道或导入桌面导出，汇总会出现在这里。"
                   : "试试清除关键词，或换一组片名、导演、网盘链接。"}
               </p>
+              {state.titles.length === 0 ? (
+                <Button className="mt-4" variant="secondary" onClick={loadDemo}>
+                  载入演示片库
+                </Button>
+              ) : null}
             </div>
           ) : (
             <TitleTable

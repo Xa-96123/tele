@@ -36,7 +36,6 @@ import { DEMO_IMPORT_SAMPLE } from "@/lib/demo-data";
 import {
   catalogExcelFilename,
   catalogToCsv,
-  downloadCatalogExcel,
   downloadText,
 } from "@/lib/export";
 import { formatRelativeTime } from "@/lib/format";
@@ -316,13 +315,21 @@ export function ChannelManager() {
                 toast.error("没有可导出的影片");
                 return;
               }
-              downloadCatalogExcel(
-                state.titles,
-                catalogExcelFilename(state.titles.length),
-              );
-              toast.success(
-                `已导出 ${state.titles.length} 部影片到 Excel`,
-              );
+              void import("@/lib/export-xlsx")
+                .then(({ downloadCatalogExcel }) => {
+                  downloadCatalogExcel(
+                    state.titles,
+                    catalogExcelFilename(state.titles.length),
+                  );
+                  toast.success(
+                    `已导出 ${state.titles.length} 部影片到 Excel`,
+                  );
+                })
+                .catch((error) => {
+                  toast.error(
+                    error instanceof Error ? error.message : "导出失败",
+                  );
+                });
             }}
           >
             <Download data-icon="inline-start" />
