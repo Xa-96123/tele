@@ -33,7 +33,12 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { normalizeChannelUsername } from "@/lib/channel";
 import { DEMO_IMPORT_SAMPLE } from "@/lib/demo-data";
-import { catalogToCsv, downloadText } from "@/lib/export";
+import {
+  catalogExcelFilename,
+  catalogToCsv,
+  downloadCatalogExcel,
+  downloadText,
+} from "@/lib/export";
 import { formatRelativeTime } from "@/lib/format";
 import { AccountPanel } from "@/components/account-panel";
 import { ExportPanel } from "@/components/export-panel";
@@ -303,6 +308,25 @@ export function ChannelManager() {
           >
             <Download data-icon="inline-start" />
             导出 CSV
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => {
+              if (state.titles.length === 0) {
+                toast.error("没有可导出的影片");
+                return;
+              }
+              downloadCatalogExcel(
+                state.titles,
+                catalogExcelFilename(state.titles.length),
+              );
+              toast.success(
+                `已导出 ${state.titles.length} 部影片到 Excel`,
+              );
+            }}
+          >
+            <Download data-icon="inline-start" />
+            导出 Excel
           </Button>
           <Button variant="secondary" onClick={loadDemo}>
             重置为演示

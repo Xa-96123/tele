@@ -9,6 +9,15 @@ const nextConfig: NextConfig = {
   turbopack: {
     root: projectRoot,
   },
+  webpack: (config) => {
+    config.resolve.fallback = {
+      ...config.resolve.fallback,
+      fs: false,
+      stream: false,
+      crypto: false,
+    };
+    return config;
+  },
 };
 
 export default nextConfig;

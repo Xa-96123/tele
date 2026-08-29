@@ -21,7 +21,12 @@ export function AppShell({ children }: { children: ReactNode }) {
   return (
     <div className="flex min-h-full flex-col">
       <header className="sticky top-0 z-40 border-b border-border/80 bg-background/85 backdrop-blur-md">
-        <div className="mx-auto flex h-14 w-full max-w-6xl items-center justify-between px-4">
+        <div
+          className={cn(
+            "mx-auto flex h-14 w-full items-center justify-between px-4",
+            pathname.startsWith("/stats") ? "max-w-[100rem]" : "max-w-6xl",
+          )}
+        >
           <Link href="/" className="flex items-center gap-2.5">
             <span className="flex size-8 items-center justify-center rounded-md bg-primary text-sm font-semibold text-primary-foreground">
               影
@@ -59,7 +64,12 @@ export function AppShell({ children }: { children: ReactNode }) {
 
       {!state.noticeDismissed && (
         <div className="border-b border-amber-500/20 bg-amber-500/8">
-          <div className="mx-auto flex w-full max-w-6xl items-start gap-3 px-4 py-2.5 text-sm text-amber-100/90">
+          <div
+            className={cn(
+              "mx-auto flex w-full items-start gap-3 px-4 py-2.5 text-sm text-amber-100/90",
+              pathname.startsWith("/stats") ? "max-w-[100rem]" : "max-w-6xl",
+            )}
+          >
             <p className="flex-1 leading-relaxed">
               影渠只读取公开频道的网页预览并汇总元数据，不下载、不托管视频文件。请只索引你有权查看的内容，并遵守当地法律与版权规定。
             </p>
@@ -75,7 +85,12 @@ export function AppShell({ children }: { children: ReactNode }) {
         </div>
       )}
 
-      <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 pb-24 md:pb-10">
+      <main
+        className={cn(
+          "mx-auto w-full flex-1 px-4 py-6 pb-24 md:pb-10",
+          pathname.startsWith("/stats") ? "max-w-[100rem]" : "max-w-6xl",
+        )}
+      >
         {children}
       </main>
 
