@@ -5,6 +5,7 @@ import { Search, SlidersHorizontal } from "lucide-react";
 import { useCatalog } from "@/components/catalog-provider";
 import { ResourceCard } from "@/components/resource-card";
 import { ResourceDetail } from "@/components/resource-detail";
+import { XianyuListingDialog } from "@/components/xianyu-listing-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -16,6 +17,7 @@ import {
 } from "@/components/ui/select";
 import { uniqueLinkKinds, uniqueResolutions } from "@/lib/catalog";
 import { LINK_LABELS, QUALITY_OPTIONS, TYPE_LABELS } from "@/lib/labels";
+import type { TitleRecord } from "@/lib/types";
 
 type SortKey = "recent" | "year" | "title" | "douban";
 
@@ -29,6 +31,7 @@ export function CatalogView() {
   const [source, setSource] = useState("all");
   const [channel, setChannel] = useState("all");
   const [sort, setSort] = useState<SortKey>("recent");
+  const [listingTitle, setListingTitle] = useState<TitleRecord | null>(null);
 
   const years = useMemo(() => {
     return [
@@ -206,6 +209,7 @@ export function CatalogView() {
               key={title.id}
               title={title}
               onOpen={() => setSelectedId(title.id)}
+              onList={() => setListingTitle(title)}
             />
           ))}
         </div>
@@ -216,6 +220,13 @@ export function CatalogView() {
         open={Boolean(selectedId)}
         onOpenChange={(open) => {
           if (!open) setSelectedId(null);
+        }}
+      />
+      <XianyuListingDialog
+        titles={listingTitle ? [listingTitle] : []}
+        open={Boolean(listingTitle)}
+        onOpenChange={(open) => {
+          if (!open) setListingTitle(null);
         }}
       />
     </div>
