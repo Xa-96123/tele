@@ -256,7 +256,7 @@ export function ChannelManager() {
         <CardHeader>
           <CardTitle>片库数据</CardTitle>
           <CardDescription>
-            数据保存在本机浏览器中，刷新不会丢失。导出后可带到另一台电脑。
+            片库存本机 data/yingqu.sqlite，不写浏览器 IndexedDB。导出后可带到另一台电脑。
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-wrap gap-2">

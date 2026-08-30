@@ -19,10 +19,9 @@ import {
   sameChannel,
 } from "@/lib/catalog";
 import {
-  clearBrowserCatalog,
   compactCatalog,
+  deleteBrowserCatalog,
   loadCatalog,
-  persistCatalog,
 } from "@/lib/catalog-storage";
 import { fetchCatalogFromServer, putCatalogToServer } from "@/lib/catalog-remote";
 import { hasCloudOrMagnetLink } from "@/lib/labels";
@@ -168,25 +167,12 @@ function schedulePersist() {
       const remote = await putCatalogToServer(snapshot);
       if (remote.ok) {
         persistFailedToastShown = false;
-        await clearBrowserCatalog();
-        return;
-      }
-
-      const result = await persistCatalog(snapshot);
-      if (result.ok) {
-        if (!persistFailedToastShown) {
-          toast.error("本机数据库暂时写不进去，这次先存在浏览器里。");
-        }
-        persistFailedToastShown = true;
+        await deleteBrowserCatalog();
         return;
       }
       if (persistFailedToastShown) return;
       persistFailedToastShown = true;
-      toast.error(
-        result.error === "quota"
-          ? "本机数据库和浏览器存储都写满了，本次同步仍留在当前页。"
-          : "片库未能写入本机，本次数据仍留在当前页。",
-      );
+      toast.error(remote.error || "未能写入本机 SQLite，片库只留在当前页。");
     })
     .catch(() => undefined);
 }
@@ -207,42 +193,36 @@ function hydrateFromBrowser() {
   if (hydratePromise) return hydratePromise;
 
   hydratePromise = (async () => {
+    let writeSqlite = false;
     try {
       const remote = await fetchCatalogFromServer();
-      if (remote.ok) {
-        if (dirtyDuringHydrate && snapshot.initialized) {
-          // A mutation landed before the local table finished loading.
-        } else if (remote.state?.initialized) {
-          snapshot = pruneUnshareable(remote.state);
-        } else {
-          const browser = await loadCatalog();
-          snapshot =
-            browser.status === "ready"
-              ? pruneUnshareable(browser.state)
-              : demoState();
-        }
-      } else {
+      if (!remote.ok) {
         throw new Error(remote.error || "读取本机片库失败");
       }
+      if (dirtyDuringHydrate && snapshot.initialized) {
+        writeSqlite = true;
+      } else if (remote.state?.initialized) {
+        snapshot = pruneUnshareable(remote.state);
+      } else {
+        const browser = await loadCatalog();
+        snapshot =
+          browser.status === "ready"
+            ? pruneUnshareable(browser.state)
+            : demoState();
+        writeSqlite = true;
+      }
     } catch {
+      writeSqlite = true;
       try {
         const loaded = await loadCatalog();
         if (dirtyDuringHydrate && snapshot.initialized) {
           // keep the in-memory mutation
         } else if (loaded.status === "ready") {
           snapshot = pruneUnshareable(loaded.state);
-        } else if (loaded.status === "idb-unavailable") {
-          snapshot = {
-            version: 1,
-            initialized: true,
-            noticeDismissed: true,
-            channels: [],
-            titles: [],
-          };
         } else {
           snapshot = demoState();
         }
-        toast.error("读不到本机数据库，先用浏览器里的备份。");
+        toast.error("读不到本机 SQLite，正在把浏览器里的旧片库迁过去。");
       } catch {
         if (!snapshot.initialized) {
           snapshot = emptyState();
@@ -251,7 +231,8 @@ function hydrateFromBrowser() {
     } finally {
       clientReady = true;
       publish();
-      schedulePersist();
+      if (writeSqlite) schedulePersist();
+      else void deleteBrowserCatalog();
     }
   })();
 

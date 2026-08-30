@@ -115,7 +115,7 @@ export function CatalogView() {
             {visible.length < filtered.length
               ? `，已显示 ${visible.length} 部`
               : ""}
-            。海报滑到附近再加载。
+            。海报滑到附近再加载。片库存本机 SQLite，不写 IndexedDB。
           </p>
         </div>
         <div className="relative w-full md:max-w-sm">

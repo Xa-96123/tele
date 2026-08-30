@@ -11,6 +11,7 @@ import {
   loadCatalog,
   persistCatalog,
   writeCatalogLocalMarker,
+  deleteBrowserCatalog,
 } from "./catalog-storage.ts";
 import type { CatalogState, Edition, TitleRecord } from "./types.ts";
 
@@ -148,6 +149,39 @@ test("localStorage marker replaces a fat catalog blob", () => {
     } else {
       Object.defineProperty(globalThis, "localStorage", {
         value: originalStorage,
+        configurable: true,
+      });
+    }
+  }
+});
+
+test("deleteBrowserCatalog drops the IndexedDB database", async () => {
+  const deleted: string[] = [];
+  const originalIdb = (globalThis as { indexedDB?: IDBFactory }).indexedDB;
+  Object.defineProperty(globalThis, "indexedDB", {
+    value: {
+      deleteDatabase(name: string) {
+        deleted.push(name);
+        return {
+          set onsuccess(fn: () => void) {
+            fn();
+          },
+          set onerror(_fn: () => void) {},
+          set onblocked(_fn: () => void) {},
+        };
+      },
+    },
+    configurable: true,
+  });
+  try {
+    await deleteBrowserCatalog();
+    assert.deepEqual(deleted, ["yingqu"]);
+  } finally {
+    if (originalIdb === undefined) {
+      delete (globalThis as { indexedDB?: IDBFactory }).indexedDB;
+    } else {
+      Object.defineProperty(globalThis, "indexedDB", {
+        value: originalIdb,
         configurable: true,
       });
     }

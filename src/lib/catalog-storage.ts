@@ -189,14 +189,27 @@ export function writeCatalogLocalMarker(backend: StorageBackend = "idb") {
   }
 }
 
-export async function clearBrowserCatalog() {
-  writeCatalogLocalMarker("sqlite");
-  if (typeof indexedDB === "undefined") return;
-  try {
-    await withCatalogDb("readwrite", (store) => store.delete(DB_KEY));
-  } catch {
-    // ignore leftover browser copies
+export async function deleteBrowserCatalog() {
+  if (typeof window !== "undefined") {
+    try {
+      localStorage.removeItem(CATALOG_STORAGE_KEY);
+    } catch {
+      // ignore
+    }
+    writeCatalogLocalMarker("sqlite");
   }
+  if (typeof indexedDB === "undefined") return;
+  await new Promise<void>((resolve) => {
+    const request = indexedDB.deleteDatabase(DB_NAME);
+    request.onsuccess = () => resolve();
+    request.onerror = () => resolve();
+    request.onblocked = () => resolve();
+  });
+}
+
+/** @deprecated Use deleteBrowserCatalog. Opening IDB just to clear it recreates the database. */
+export async function clearBrowserCatalog() {
+  await deleteBrowserCatalog();
 }
 
 function writeCatalogLocalFull(state: CatalogState): PersistCatalogResult {

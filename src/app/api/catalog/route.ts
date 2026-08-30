@@ -1,13 +1,24 @@
 import { NextRequest } from "next/server";
 import { isCatalogState } from "@/lib/catalog-storage";
-import { readCatalogState, replaceCatalogState } from "@/lib/catalog-db";
+import {
+  catalogTableCounts,
+  defaultCatalogDbPath,
+  readCatalogState,
+  replaceCatalogState,
+} from "@/lib/catalog-db";
 
 export const runtime = "nodejs";
 
 export async function GET() {
   try {
     const state = readCatalogState();
-    return Response.json({ ok: true, state });
+    return Response.json({
+      ok: true,
+      store: "sqlite",
+      file: defaultCatalogDbPath(),
+      counts: catalogTableCounts(),
+      state,
+    });
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "读取本地片库失败。";
@@ -30,7 +41,12 @@ export async function PUT(request: NextRequest) {
 
   try {
     replaceCatalogState(state);
-    return Response.json({ ok: true });
+    return Response.json({
+      ok: true,
+      store: "sqlite",
+      file: defaultCatalogDbPath(),
+      counts: catalogTableCounts(),
+    });
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "写入本地片库失败。";
