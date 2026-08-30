@@ -1,8 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Search, SlidersHorizontal } from "lucide-react";
 import { useCatalog } from "@/components/catalog-provider";
+import { InfiniteSentinel } from "@/components/infinite-sentinel";
 import { ResourceCard } from "@/components/resource-card";
 import { ResourceDetail } from "@/components/resource-detail";
 import { XianyuListingDialog } from "@/components/xianyu-listing-dialog";
@@ -21,6 +22,9 @@ import type { TitleRecord } from "@/lib/types";
 
 type SortKey = "recent" | "year" | "title" | "douban";
 
+const PAGE_SIZE = 24;
+const EAGER_POSTERS = 8;
+
 export function CatalogView() {
   const { ready, state, selectedId, setSelectedId, selectedTitle } =
     useCatalog();
@@ -32,6 +36,7 @@ export function CatalogView() {
   const [channel, setChannel] = useState("all");
   const [sort, setSort] = useState<SortKey>("recent");
   const [listingTitle, setListingTitle] = useState<TitleRecord | null>(null);
+  const [shown, setShown] = useState(PAGE_SIZE);
 
   const years = useMemo(() => {
     return [
@@ -84,6 +89,16 @@ export function CatalogView() {
     return rows;
   }, [channel, quality, query, sort, source, state.titles, type, year]);
 
+  useEffect(() => {
+    setShown(PAGE_SIZE);
+  }, [channel, quality, query, sort, source, type, year]);
+
+  const visible = filtered.slice(0, shown);
+  const remaining = filtered.length - visible.length;
+  const loadMore = useCallback(() => {
+    setShown((current) => current + PAGE_SIZE);
+  }, []);
+
   if (!ready) {
     return <CatalogSkeleton />;
   }
@@ -96,7 +111,11 @@ export function CatalogView() {
             片库
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            已汇总 {state.titles.filter(hasCloudOrMagnetLink).length} 部有网盘或磁力的影片，当前显示 {filtered.length} 部。片库存本机 data/yingqu.sqlite，不占浏览器。
+            已汇总 {state.titles.filter(hasCloudOrMagnetLink).length} 部有网盘或磁力的影片，筛选出 {filtered.length} 部
+            {visible.length < filtered.length
+              ? `，已显示 ${visible.length} 部`
+              : ""}
+            。海报滑到附近再加载。
           </p>
         </div>
         <div className="relative w-full md:max-w-sm">
@@ -205,14 +224,16 @@ export function CatalogView() {
         <EmptyCatalog hasData={state.titles.length > 0} />
       ) : (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-          {filtered.map((title) => (
+          {visible.map((title, index) => (
             <ResourceCard
               key={title.id}
               title={title}
+              eagerPoster={index < EAGER_POSTERS}
               onOpen={() => setSelectedId(title.id)}
               onList={() => setListingTitle(title)}
             />
           ))}
+          <InfiniteSentinel remaining={remaining} onVisible={loadMore} />
         </div>
       )}
 

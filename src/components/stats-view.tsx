@@ -18,8 +18,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { LazyPoster } from "@/components/lazy-poster";
 import { catalogExcelFilename } from "@/lib/export";
-import { posterStyle } from "@/lib/format";
 import {
   cloudKindsInTitles,
   collectCloudLinks,
@@ -340,26 +340,15 @@ function TitleTable({
 }
 
 function PosterThumb({ title }: { title: TitleRecord }) {
-  const src = titlePosterUrl(title);
   return (
-    <div
-      className="relative h-[4.5rem] w-12 overflow-hidden rounded-md bg-muted ring-1 ring-foreground/10"
-      style={src ? undefined : posterStyle(title.id)}
-    >
-      {src ? (
-        // Telegram CDN / demo posters; skip next/image host allowlisting.
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={src}
-          alt={`${title.title} 海报`}
-          className="size-full object-cover"
-        />
-      ) : (
-        <span className="absolute inset-0 flex items-end p-1 font-heading text-lg text-white/85">
-          {title.title.slice(0, 1)}
-        </span>
-      )}
-    </div>
+    <LazyPoster
+      src={titlePosterUrl(title)}
+      alt={`${title.title} 海报`}
+      fallbackId={title.id}
+      letter={title.title.slice(0, 1)}
+      className="h-[4.5rem] w-12 rounded-md bg-muted ring-1 ring-foreground/10"
+      letterClassName="p-1 text-lg"
+    />
   );
 }
 

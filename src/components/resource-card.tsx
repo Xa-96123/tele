@@ -3,8 +3,8 @@
 import { Store } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { LazyPoster } from "@/components/lazy-poster";
 import { uniqueLinkKinds, uniqueResolutions } from "@/lib/catalog";
-import { posterStyle } from "@/lib/format";
 import { LINK_LABELS, TYPE_LABELS } from "@/lib/labels";
 import type { TitleRecord } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -13,10 +13,12 @@ export function ResourceCard({
   title,
   onOpen,
   onList,
+  eagerPoster = false,
 }: {
   title: TitleRecord;
   onOpen: () => void;
   onList: () => void;
+  eagerPoster?: boolean;
 }) {
   const resolutions = uniqueResolutions(title);
   const links = uniqueLinkKinds(title);
@@ -25,31 +27,22 @@ export function ResourceCard({
   ];
 
   return (
-    <article className="group flex flex-col overflow-hidden rounded-xl bg-card ring-1 ring-foreground/10 transition hover:-translate-y-0.5 hover:ring-primary/50">
+    <article className="group flex flex-col overflow-hidden rounded-xl bg-card ring-1 ring-foreground/10 transition [contain-intrinsic-size:auto_28rem] [content-visibility:auto] hover:-translate-y-0.5 hover:ring-primary/50">
       <button
         type="button"
         onClick={onOpen}
         className="flex flex-1 flex-col text-left"
       >
-        <div
-          className="relative aspect-[3/4] overflow-hidden"
-          style={title.posterUrl ? undefined : posterStyle(title.id)}
-        >
-          {title.posterUrl ? (
-            // Telegram CDN posters; skip next/image host allowlisting.
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={title.posterUrl}
-              alt=""
-              className="size-full object-cover transition duration-500 group-hover:scale-[1.03]"
-            />
-          ) : (
-            <div className="absolute inset-0 flex items-end p-3">
-              <span className="font-heading text-3xl font-semibold text-white/85">
-                {title.title.slice(0, 1)}
-              </span>
-            </div>
-          )}
+        <div className="relative aspect-[3/4] overflow-hidden">
+          <LazyPoster
+            src={title.posterUrl}
+            fallbackId={title.id}
+            letter={title.title.slice(0, 1)}
+            eager={eagerPoster}
+            className="absolute inset-0"
+            imgClassName="transition duration-500 group-hover:scale-[1.03]"
+            letterClassName="text-3xl"
+          />
           <div className="absolute inset-x-0 top-0 flex items-start justify-between p-2">
             <Badge className="bg-black/55 text-white">
               {TYPE_LABELS[title.type]}
