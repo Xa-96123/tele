@@ -7,10 +7,14 @@ export const OVERVIEW_MAX = 800;
 const DB_NAME = "yingqu";
 const DB_STORE = "kv";
 const DB_KEY = "catalog";
-const IDB_MARKER = { version: 1 as const, backend: "idb" as const };
+type StorageBackend = "idb" | "sqlite";
+
+function storageMarker(backend: StorageBackend) {
+  return { version: 1 as const, backend };
+}
 
 export type PersistCatalogResult =
-  | { ok: true; backend: "idb" | "local" }
+  | { ok: true; backend: "sqlite" | "idb" | "local" }
   | { ok: false; error: "quota" | "unavailable" };
 
 export type LoadCatalogResult =
@@ -78,6 +82,12 @@ export function isIdbMarker(value: unknown): boolean {
   return record.version === 1 && record.backend === "idb";
 }
 
+export function isSqliteMarker(value: unknown): boolean {
+  if (!value || typeof value !== "object") return false;
+  const record = value as { version?: unknown; backend?: unknown };
+  return record.version === 1 && record.backend === "sqlite";
+}
+
 function openCatalogDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, 1);
@@ -138,7 +148,9 @@ export function readCatalogLocal(): CatalogState | undefined {
     const raw = localStorage.getItem(CATALOG_STORAGE_KEY);
     if (!raw) return undefined;
     const parsed = JSON.parse(raw) as unknown;
-    if (isIdbMarker(parsed) || !isCatalogState(parsed)) return undefined;
+    if (isIdbMarker(parsed) || isSqliteMarker(parsed) || !isCatalogState(parsed)) {
+      return undefined;
+    }
     return parsed;
   } catch {
     return undefined;
@@ -156,7 +168,7 @@ export function hasIdbMarker(): boolean {
   }
 }
 
-export function writeCatalogLocalMarker() {
+export function writeCatalogLocalMarker(backend: StorageBackend = "idb") {
   if (typeof window === "undefined") return;
   try {
     localStorage.removeItem(CATALOG_STORAGE_KEY);
@@ -164,13 +176,26 @@ export function writeCatalogLocalMarker() {
     // quota may already be full; still try the tiny marker
   }
   try {
-    localStorage.setItem(CATALOG_STORAGE_KEY, JSON.stringify(IDB_MARKER));
+    localStorage.setItem(
+      CATALOG_STORAGE_KEY,
+      JSON.stringify(storageMarker(backend)),
+    );
   } catch {
     try {
       localStorage.removeItem(CATALOG_STORAGE_KEY);
     } catch {
       // ignore
     }
+  }
+}
+
+export async function clearBrowserCatalog() {
+  writeCatalogLocalMarker("sqlite");
+  if (typeof indexedDB === "undefined") return;
+  try {
+    await withCatalogDb("readwrite", (store) => store.delete(DB_KEY));
+  } catch {
+    // ignore leftover browser copies
   }
 }
 

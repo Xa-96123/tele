@@ -132,7 +132,7 @@ export function StatsView() {
             汇总
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            只列出有网盘或磁力的影片。勾选后可上架闲鱼。表格含海报、片名和分列链接，不含简介。
+            只列出有网盘或磁力的影片。勾选后可上架闲鱼。表格含海报、片名和分列链接，不含简介。数据在本机 SQLite。
           </p>
         </div>
         <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-center lg:w-auto">

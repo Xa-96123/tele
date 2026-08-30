@@ -20,11 +20,11 @@
 - 汇总表可勾选后批量上架闲鱼
 - 导出 JSON / CSV / 全字段 Excel；汇总页导出为海报、片名和分列网盘链接
 - 首次打开带有演示片库
-- 片库存浏览器 IndexedDB，localStorage 只留占位，避免整库超出配额
+- 片库存本机 SQLite 表（频道 / 影片 / 版本 / 链接），不占浏览器配额。旧浏览器数据会自动迁过去
 
 ## 本地运行
 
-需要 Node.js 20+。在项目目录里安装并启动（不要在上层 `code` 目录执行）：
+需要 Node.js 22+（用内置 SQLite 建表）。在项目目录里安装并启动（不要在上层 `code` 目录执行）：
 
 ```bash
 cd ~/Desktop/code/tele
@@ -42,6 +42,8 @@ HTTPS_PROXY=http://127.0.0.1:7890 npm run dev
 也可以在「频道 → 网页版」填写或检测 `127.0.0.1:7890`，不必重启。
 
 浏览器打开 [http://127.0.0.1:43141](http://127.0.0.1:43141)。
+
+片库文件默认在 `data/yingqu.sqlite`。可用环境变量 `YINGQU_DB_PATH` 改路径。换浏览器或清站点数据不会丢片库；删这个文件才会清空。不要把该文件提交到 git。
 
 Mac 上如果出现 `@next/swc-darwin-arm64` 损坏或 Turbopack 不可用，多半是 `node_modules` 不完整，或上层目录有多余的 `package-lock.json`。删掉依赖后在 **tele** 目录重新 `npm install`。开发脚本已改用 Webpack，不依赖 Turbopack 原生绑定。
 
@@ -102,4 +104,5 @@ npm run build
 - 网页预览只能读公开频道。
 - 解析依赖帖子写法，广告和纯新闻会被跳过。
 - 不会下载视频文件。
-- 片库存在本机浏览器（IndexedDB）。同步很多频道后，原文和 data URI 海报会被压缩，以免撑爆存储。
+- 片库存在本机 SQLite（`data/yingqu.sqlite`）。部署到只读环境时没有持久磁盘，会退回浏览器备份。
+- 同步很多频道后，原文和 data URI 海报会被压缩后再入库。

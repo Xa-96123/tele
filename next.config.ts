@@ -10,13 +10,15 @@ const nextConfig: NextConfig = {
   turbopack: {
     root: projectRoot,
   },
-  webpack: (config) => {
-    config.resolve.fallback = {
-      ...config.resolve.fallback,
-      fs: false,
-      stream: false,
-      crypto: false,
-    };
+  webpack: (config, { isServer }) => {
+    if (!isServer) {
+      config.resolve.fallback = {
+        ...config.resolve.fallback,
+        fs: false,
+        stream: false,
+        crypto: false,
+      };
+    }
     return config;
   },
 };

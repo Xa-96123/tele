@@ -96,7 +96,7 @@ export function CatalogView() {
             片库
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            已汇总 {state.titles.filter(hasCloudOrMagnetLink).length} 部有网盘或磁力的影片，当前显示 {filtered.length} 部
+            已汇总 {state.titles.filter(hasCloudOrMagnetLink).length} 部有网盘或磁力的影片，当前显示 {filtered.length} 部。片库存本机 data/yingqu.sqlite，不占浏览器。
           </p>
         </div>
         <div className="relative w-full md:max-w-sm">

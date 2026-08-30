@@ -17,10 +17,12 @@ import {
   recountChannel,
 } from "@/lib/catalog";
 import {
+  clearBrowserCatalog,
   compactCatalog,
   loadCatalog,
   persistCatalog,
 } from "@/lib/catalog-storage";
+import { fetchCatalogFromServer, putCatalogToServer } from "@/lib/catalog-remote";
 import { hasCloudOrMagnetLink } from "@/lib/labels";
 import { buildDemoCatalog } from "@/lib/demo-data";
 import { readAccountAuth, writeAccountAuth } from "@/lib/account-session";
@@ -112,20 +114,41 @@ function schedulePersist() {
   persistChain = persistChain
     .catch(() => undefined)
     .then(async () => {
+      const remote = await putCatalogToServer(snapshot);
+      if (remote.ok) {
+        persistFailedToastShown = false;
+        await clearBrowserCatalog();
+        return;
+      }
+
       const result = await persistCatalog(snapshot);
       if (result.ok) {
-        persistFailedToastShown = false;
+        if (!persistFailedToastShown) {
+          toast.error("本机数据库暂时写不进去，这次先存在浏览器里。");
+        }
+        persistFailedToastShown = true;
         return;
       }
       if (persistFailedToastShown) return;
       persistFailedToastShown = true;
       toast.error(
         result.error === "quota"
-          ? "浏览器存储已满，本次同步仍留在当前页，刷新后可能丢失新增内容。"
-          : "片库未能写入浏览器存储，本次数据仍留在当前页。",
+          ? "本机数据库和浏览器存储都写满了，本次同步仍留在当前页。"
+          : "片库未能写入本机，本次数据仍留在当前页。",
       );
     })
     .catch(() => undefined);
+}
+
+function demoState(): CatalogState {
+  const demo = buildDemoCatalog();
+  return {
+    version: 1,
+    initialized: true,
+    noticeDismissed: false,
+    channels: demo.channels,
+    titles: demo.titles,
+  };
 }
 
 function hydrateFromBrowser() {
@@ -133,41 +156,51 @@ function hydrateFromBrowser() {
   if (hydratePromise) return hydratePromise;
 
   hydratePromise = (async () => {
-    let skipPersist = false;
     try {
-      const loaded = await loadCatalog();
-      if (dirtyDuringHydrate && snapshot.initialized) {
-        // A mutation landed before IndexedDB finished; keep it.
-      } else if (loaded.status === "ready") {
-        snapshot = pruneUnshareable(loaded.state);
-      } else if (loaded.status === "idb-unavailable") {
-        skipPersist = true;
-        snapshot = {
-          version: 1,
-          initialized: true,
-          noticeDismissed: true,
-          channels: [],
-          titles: [],
-        };
-        toast.error("无法读取本机片库，请稍后刷新重试。");
+      const remote = await fetchCatalogFromServer();
+      if (remote.ok) {
+        if (dirtyDuringHydrate && snapshot.initialized) {
+          // A mutation landed before the local table finished loading.
+        } else if (remote.state?.initialized) {
+          snapshot = pruneUnshareable(remote.state);
+        } else {
+          const browser = await loadCatalog();
+          snapshot =
+            browser.status === "ready"
+              ? pruneUnshareable(browser.state)
+              : demoState();
+        }
       } else {
-        const demo = buildDemoCatalog();
-        snapshot = {
-          version: 1,
-          initialized: true,
-          noticeDismissed: false,
-          channels: demo.channels,
-          titles: demo.titles,
-        };
+        throw new Error(remote.error || "读取本机片库失败");
       }
     } catch {
-      if (!snapshot.initialized) {
-        snapshot = emptyState();
+      try {
+        const loaded = await loadCatalog();
+        if (dirtyDuringHydrate && snapshot.initialized) {
+          // keep the in-memory mutation
+        } else if (loaded.status === "ready") {
+          snapshot = pruneUnshareable(loaded.state);
+        } else if (loaded.status === "idb-unavailable") {
+          snapshot = {
+            version: 1,
+            initialized: true,
+            noticeDismissed: true,
+            channels: [],
+            titles: [],
+          };
+        } else {
+          snapshot = demoState();
+        }
+        toast.error("读不到本机数据库，先用浏览器里的备份。");
+      } catch {
+        if (!snapshot.initialized) {
+          snapshot = emptyState();
+        }
       }
     } finally {
       clientReady = true;
       notifyListeners();
-      if (!skipPersist) schedulePersist();
+      schedulePersist();
     }
   })();
 

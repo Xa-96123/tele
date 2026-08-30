@@ -127,6 +127,10 @@ test("localStorage marker replaces a fat catalog blob", () => {
     assert.equal(hasIdbMarker(), false);
     writeCatalogLocalMarker();
     assert.equal(hasIdbMarker(), true);
+    writeCatalogLocalMarker("sqlite");
+    assert.equal(hasIdbMarker(), false);
+    const sqliteRaw = mock.getItem("yingqu.catalog.v1") ?? "";
+    assert.ok(sqliteRaw.includes("sqlite"));
     const raw = mock.getItem("yingqu.catalog.v1") ?? "";
     assert.ok(raw.length < 80);
     assert.ok(!raw.includes("沙丘2"));
