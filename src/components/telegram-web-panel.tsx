@@ -13,7 +13,10 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { channelInputError, parseChannelInput } from "@/lib/channel";
+import {
+  channelInputError,
+  parseChannelInput,
+} from "@/lib/channel";
 
 export function TelegramWebPanel({
   onPastePosts,
@@ -23,6 +26,7 @@ export function TelegramWebPanel({
   const { addAndSync } = useCatalog();
   const [value, setValue] = useState("");
   const [adding, setAdding] = useState(false);
+  const preview = parseChannelInput(value);
 
   async function onAdd(event: FormEvent) {
     event.preventDefault();
@@ -71,22 +75,29 @@ export function TelegramWebPanel({
           </li>
           <li>没有公开预览、或链接带一长串数字：在网页版里选中帖子复制，再点「粘贴导入」。</li>
         </ol>
-        <form onSubmit={onAdd} className="flex flex-col gap-2 sm:flex-row">
-          <Input
-            value={value}
-            onChange={(e) => setValue(e.target.value)}
-            placeholder="web.telegram.org/k/#@moviehub 或 t.me/s/moviehub"
-            className="h-9"
-            aria-label="网页版频道链接"
-          />
-          <Button type="submit" disabled={adding} className="sm:w-40">
-            {adding ? (
-              <Loader2 data-icon="inline-start" className="animate-spin" />
-            ) : (
-              <Plus data-icon="inline-start" />
-            )}
-            提取公开预览
-          </Button>
+        <form onSubmit={onAdd} className="flex flex-col gap-2">
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <Input
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+              placeholder="https://web.telegram.org/k/#@Aliyun_4K_Movies"
+              className="h-9"
+              aria-label="网页版频道链接"
+            />
+            <Button type="submit" disabled={adding} className="sm:w-40">
+              {adding ? (
+                <Loader2 data-icon="inline-start" className="animate-spin" />
+              ) : (
+                <Plus data-icon="inline-start" />
+              )}
+              提取公开预览
+            </Button>
+          </div>
+          {preview.ok ? (
+            <p className="text-xs text-muted-foreground">
+              将提取 @{preview.username}
+            </p>
+          ) : null}
         </form>
         <div className="flex flex-wrap gap-2">
           <Button variant="secondary" onClick={onPastePosts}>

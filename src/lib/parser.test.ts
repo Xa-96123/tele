@@ -38,6 +38,18 @@ test("normalize telegram usernames", () => {
     normalizeChannelUsername("https://web.telegram.org/a/#@cine_4k"),
     "cine_4k",
   );
+  assert.equal(
+    normalizeChannelUsername(
+      "https://web.telegram.org/k/#@Aliyun_4K_Movies",
+    ),
+    "Aliyun_4K_Movies",
+  );
+  assert.equal(
+    normalizeChannelUsername(
+      "https://web.telegram.org/k/#%40Aliyun_4K_Movies",
+    ),
+    "Aliyun_4K_Movies",
+  );
   assert.equal(normalizeChannelUsername("tg://resolve?domain=Movie_Hub"), "Movie_Hub");
   assert.equal(normalizeChannelUsername("ab"), null);
   assert.deepEqual(parseChannelInput("https://web.telegram.org/k/#-100123"), {
@@ -48,6 +60,41 @@ test("normalize telegram usernames", () => {
     ok: false,
     reason: "private_web",
   });
+});
+
+test("parses Aliyun_4K_Movies name/description posts", () => {
+  const drama = parsePostToTitle(
+    makePost(`名称：电视剧：金色 (2026)辛芷蕾 / 尹昉 / 陈坤 / 高伟光  更新至8集
+
+描述：三十万两黄金突现大漠，传言寻金之人皆成厉鬼。
+
+阿里：https://www.alipan.com/s/nLPex8xoT4S
+夸克：https://pan.quark.cn/s/9cf9a5b3f2f0
+百度：https://pan.baidu.com/s/12vTqLqJiW3GpoxVIpBgOpA?pwd=9pkb`),
+  );
+  assert.ok(drama);
+  assert.equal(drama.title, "金色");
+  assert.equal(drama.year, 2026);
+  assert.equal(drama.type, "series");
+  assert.equal(drama.editions[0].episodes, "更新至8集");
+  assert.equal(drama.overview, "三十万两黄金突现大漠，传言寻金之人皆成厉鬼。");
+  assert.deepEqual(
+    drama.editions[0].links.map((link) => link.kind),
+    ["aliyun", "quark", "baidu"],
+  );
+
+  const mixedParen = parsePostToTitle(
+    makePost(`名称：蝉(2026） 4K 全集
+
+描述：三个孤独的陌生人在硬核案件的刑事辩护中互相博弈。
+
+阿里：https://www.alipan.com/s/J1Aa3fjP3KF`),
+  );
+  assert.ok(mixedParen);
+  assert.equal(mixedParen.title, "蝉");
+  assert.equal(mixedParen.year, 2026);
+  assert.equal(mixedParen.editions[0].resolution, "2160p");
+  assert.equal(mixedParen.editions[0].episodes, "全集");
 });
 
 test("parses book-title movie posts", () => {

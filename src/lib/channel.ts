@@ -5,13 +5,22 @@ export type ChannelInput =
   | { ok: false; reason: "empty" | "private_web" | "invalid" };
 
 const WEB_AT_RE =
-  /(?:https?:\/\/)?web\.telegram\.org\/(?:k|a|z)\/#@([a-zA-Z][a-zA-Z0-9_]{3,31})/i;
+  /(?:https?:\/\/)?web\.telegram\.org\/(?:k|a|z)?\/?#@([a-zA-Z][a-zA-Z0-9_]{3,31})/i;
 const WEB_PRIVATE_RE =
-  /(?:https?:\/\/)?web\.telegram\.org\/(?:k|a|z)\/#-\d+/i;
-const TME_PRIVATE_RE = /^https?:\/\/t\.me\/c\//i;
+  /(?:https?:\/\/)?web\.telegram\.org\/(?:k|a|z)?\/?#-\d+/i;
+const TME_PRIVATE_RE = /^https?:\/\/(?:www\.)?(?:t|telegram)\.me\/c\//i;
+
+function decodeChannelInput(input: string): string {
+  const trimmed = input.trim();
+  try {
+    return decodeURIComponent(trimmed.replace(/\+/g, "%20"));
+  } catch {
+    return trimmed;
+  }
+}
 
 export function parseChannelInput(input: string): ChannelInput {
-  const value = input.trim();
+  const value = decodeChannelInput(input);
   if (!value) return { ok: false, reason: "empty" };
   if (WEB_PRIVATE_RE.test(value) || TME_PRIVATE_RE.test(value)) {
     return { ok: false, reason: "private_web" };
@@ -34,14 +43,14 @@ export function channelInputError(
 }
 
 export function normalizeChannelUsername(input: string): string | null {
-  let value = input.trim();
+  let value = decodeChannelInput(input);
 
   const webAt = value.match(WEB_AT_RE);
   if (webAt?.[1]) return webAt[1];
 
   value = value.replace(/^tg:\/\/resolve\?domain=/i, "");
-  value = value.replace(/^https?:\/\/(www\.)?t\.me\/s\//i, "");
-  value = value.replace(/^https?:\/\/(www\.)?t\.me\//i, "");
+  value = value.replace(/^https?:\/\/(www\.)?(?:t|telegram)\.me\/s\//i, "");
+  value = value.replace(/^https?:\/\/(www\.)?(?:t|telegram)\.me\//i, "");
   value = value.replace(/^#@/, "");
   value = value.replace(/^@/, "");
   value = value.replace(/[/?#].*$/, "");

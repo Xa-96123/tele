@@ -16,43 +16,59 @@ export class ChannelFetchError extends Error {
   }
 }
 
+function previewUrls(username: string, before?: string): string[] {
+  const paths = [
+    channelUrl(username),
+    `https://telegram.me/s/${username}`,
+  ];
+  return paths.map((href) => {
+    const url = new URL(href);
+    if (before) url.searchParams.set("before", before);
+    return url.toString();
+  });
+}
+
 async function fetchPreviewPage(username: string, before?: string) {
-  const url = new URL(channelUrl(username));
-  if (before) url.searchParams.set("before", before);
+  const targets = previewUrls(username, before);
+  let lastError: unknown;
 
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 15000);
-
-  try {
-    const res = await fetch(url.toString(), {
-      headers: {
-        "User-Agent": UA,
-        Accept: "text/html,application/xhtml+xml",
-        "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
-      },
-      signal: controller.signal,
-      cache: "no-store",
-      redirect: "follow",
-    });
-    if (!res.ok) {
-      throw new ChannelFetchError(
-        `Telegram 返回 ${res.status}，频道可能不存在或暂不可用。`,
-        res.status,
-      );
+  for (const target of targets) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 15000);
+    try {
+      const res = await fetch(target, {
+        headers: {
+          "User-Agent": UA,
+          Accept: "text/html,application/xhtml+xml",
+          "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+        },
+        signal: controller.signal,
+        cache: "no-store",
+        redirect: "follow",
+      });
+      if (!res.ok) {
+        lastError = new ChannelFetchError(
+          `Telegram 返回 ${res.status}，频道可能不存在或暂不可用。`,
+          res.status,
+        );
+        continue;
+      }
+      return await res.text();
+    } catch (error) {
+      lastError = error;
+    } finally {
+      clearTimeout(timer);
     }
-    return await res.text();
-  } catch (error) {
-    if (error instanceof ChannelFetchError) throw error;
-    if (error instanceof Error && error.name === "AbortError") {
-      throw new ChannelFetchError("读取频道预览超时，请稍后重试。", 504);
-    }
-    throw new ChannelFetchError(
-      "无法访问 t.me 公开预览。请改在 Telegram 网页版复制帖子，再点「粘贴导入」。",
-      502,
-    );
-  } finally {
-    clearTimeout(timer);
   }
+
+  if (lastError instanceof ChannelFetchError) throw lastError;
+  if (lastError instanceof Error && lastError.name === "AbortError") {
+    throw new ChannelFetchError("读取频道预览超时，请稍后重试。", 504);
+  }
+  throw new ChannelFetchError(
+    "无法访问公开预览（t.me 在部分网络会被拦截）。请在 web.telegram.org 打开频道，复制影片帖子后再点「粘贴导入」。",
+    502,
+  );
 }
 
 export async function syncPublicChannel(options: {

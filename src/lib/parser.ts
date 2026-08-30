@@ -169,7 +169,7 @@ function pickField(text: string, labels: string[]): string | undefined {
 function extractYear(text: string): number | undefined {
   const match = text.match(/(?:年份|年代|上映)\s*[:：]\s*((?:19|20)\d{2})/);
   if (match) return Number(match[1]);
-  const years = [...text.matchAll(/\(((?:19|20)\d{2})\)/g)].map((m) =>
+  const years = [...text.matchAll(/[\(（]((?:19|20)\d{2})[\)）]/g)].map((m) =>
     Number(m[1]),
   );
   if (years.length) return years[0];
@@ -248,6 +248,7 @@ function extractEpisodes(text: string): string | undefined {
   if (upto) return `更新至${upto[1]}集`;
   const range = text.match(/\bEP?(\d{1,3})\s*[-~至]\s*EP?(\d{1,3})\b/i);
   if (range) return `EP${range[1]}-${range[2]}`;
+  if (/全集/.test(text)) return "全集";
   return undefined;
 }
 
@@ -299,7 +300,7 @@ function extractTitles(
   let originalTitle: string | undefined;
 
   const named = pickField(text, ["片名", "名称", "标题", "中文名"]);
-  if (!title && named) title = stripDecor(named);
+  if (!title && named) title = cleanResourceName(named);
 
   const release = text.match(
     /([A-Za-z0-9]+(?:\.[A-Za-z0-9]+){2,})\.(?:19|20)\d{2}\./,
@@ -339,6 +340,28 @@ function extractTitles(
   }
 
   return { title, originalTitle };
+}
+
+const TYPE_PREFIX_RE =
+  /^(电视剧|电视|电影|动漫|番剧|纪录片|纪录|综艺|短剧|动画)\s*[:：]\s*/;
+
+function cleanResourceName(raw: string): string {
+  let value = stripDecor(raw).replace(TYPE_PREFIX_RE, "");
+  value =
+    value.split(
+      /\s*(?:描述|简介|剧情|阿里|夸克|百度|115|磁力)[:：]/,
+    )[0] ?? value;
+  const withYear = value.match(
+    /^(.*?)\s*[\(（]((?:19|20)\d{2})[\)）]/,
+  );
+  if (withYear?.[1]) return withYear[1].replace(TYPE_PREFIX_RE, "").trim();
+  return value
+    .replace(/\b(?:2160p|1080p|720p|480p|4K|8K)\b/gi, "")
+    .replace(/更新至\s*\d+\s*集?.*$/u, "")
+    .replace(/全\s*\d+\s*集.*$/u, "")
+    .replace(/全集.*$/u, "")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function hasResourceSignal(input: {
@@ -390,7 +413,7 @@ export function parsePostToTitle(
   const douban = extractScore(text, ["豆瓣", "豆瓣评分"]);
   const imdb = extractScore(text, ["IMDb", "IMDB", "Imdb"]);
   const type = detectType(text, names.title);
-  const overview = pickField(text, ["简介", "剧情简介", "剧情"]);
+  const overview = pickField(text, ["简介", "剧情简介", "剧情", "描述"]);
   const director = pickField(text, ["导演"]);
   const castLine = pickField(text, ["主演", "演员"]);
   const genres = extractGenres(text);
