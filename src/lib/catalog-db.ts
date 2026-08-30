@@ -455,6 +455,16 @@ export function replaceCatalogState(state: CatalogState, filePath?: string) {
   }
 }
 
+export function applyAndSave(
+  mutator: (state: CatalogState) => CatalogState,
+  filePath?: string,
+): CatalogState {
+  const current = readCatalogState(filePath);
+  const next = mutator(current);
+  replaceCatalogState({ ...next, initialized: true }, filePath);
+  return readCatalogState(filePath);
+}
+
 export function catalogTableCounts(filePath?: string) {
   const db = getCatalogDb(filePath);
   const count = (table: string) => {

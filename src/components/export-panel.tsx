@@ -41,7 +41,8 @@ export function ExportPanel() {
           if (!res.ok) throw new Error(data.error || `${file.name} 解析失败`);
           result = data;
         }
-        ingestSyncResult(result);
+        const ok = await ingestSyncResult(result);
+        if (!ok) throw new Error(`${file.name} 写入片库失败`);
         imported += 1;
       }
       if (imported > 1) {

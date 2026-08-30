@@ -11,29 +11,23 @@ import {
   type ReactNode,
 } from "react";
 import { toast } from "sonner";
-import {
-  mergeCatalog,
-  nextHistoryCursor,
-  nextPostCount,
-  recountChannel,
-  sameChannel,
-} from "@/lib/catalog";
+import { recountChannel, sameChannel } from "@/lib/catalog";
+import { markChannelErrorInState } from "@/lib/catalog-apply";
 import {
   compactCatalog,
   deleteBrowserCatalog,
   loadCatalog,
 } from "@/lib/catalog-storage";
-import { fetchCatalogFromServer, putCatalogToServer } from "@/lib/catalog-remote";
+import {
+  fetchCatalogFromServer,
+  postCatalogApply,
+  putCatalogToServer,
+} from "@/lib/catalog-remote";
 import { hasCloudOrMagnetLink } from "@/lib/labels";
 import { buildDemoCatalog } from "@/lib/demo-data";
 import { readAccountAuth, writeAccountAuth } from "@/lib/account-session";
 import { readStoredProxy } from "@/lib/local-proxy";
-import type {
-  CatalogState,
-  ChannelRecord,
-  SyncResult,
-  TitleRecord,
-} from "@/lib/types";
+import type { CatalogState, ChannelRecord, SyncResult, TitleRecord } from "@/lib/types";
 
 const SERVER_SNAPSHOT: CatalogState = {
   version: 1,
@@ -58,14 +52,34 @@ type CatalogContextValue = {
   setSelectedId: (id: string | null) => void;
   selectedTitle: TitleRecord | null;
   addAndSync: (username: string) => Promise<boolean>;
-  syncOne: (username: string, more?: boolean) => Promise<boolean>;
+  addAccountAndSync: (username: string, peerId?: string) => Promise<boolean>;
+  syncOne: (
+    username: string,
+    more?: boolean,
+    untilEnd?: boolean,
+  ) => Promise<boolean>;
   syncAll: () => Promise<void>;
   importText: (text: string) => Promise<boolean>;
-  ingestSyncResult: (result: SyncResult, more?: boolean) => void;
-  removeChannel: (username: string) => void;
+  ingestSyncResult: (result: SyncResult, more?: boolean) => Promise<boolean>;
+  removeChannel: (username: string) => Promise<void>;
   loadDemo: () => void;
   clearAll: () => void;
   dismissNotice: () => void;
+};
+
+type SyncReport = {
+  error?: string;
+  code?: string;
+  state?: CatalogState;
+  posts?: number;
+  usable?: number;
+  skipped?: number;
+  dropped?: number;
+  exhausted?: boolean;
+  rounds?: number;
+  nextBefore?: string;
+  session?: string;
+  channelTitle?: string;
 };
 
 const CatalogContext = createContext<CatalogContextValue | null>(null);
@@ -177,6 +191,61 @@ function schedulePersist() {
     .catch(() => undefined);
 }
 
+function adoptServerState(state: CatalogState | undefined) {
+  if (!state) return;
+  try {
+    snapshot = pruneUnshareable(state);
+  } catch {
+    snapshot = state;
+  }
+  if (!clientReady) dirtyDuringHydrate = true;
+  publish();
+  if (typeof window !== "undefined" && clientReady) {
+    void deleteBrowserCatalog();
+  }
+}
+
+function rememberChannelPlaceholder(
+  username: string,
+  extras?: Partial<ChannelRecord>,
+) {
+  const existing = snapshot.channels.find((channel) =>
+    sameChannel(channel.username, username),
+  );
+  if (existing) {
+    if (!extras) return;
+    snapshot = {
+      ...snapshot,
+      initialized: true,
+      channels: snapshot.channels.map((channel) =>
+        sameChannel(channel.username, username)
+          ? { ...channel, ...extras, lastError: extras.lastError }
+          : channel,
+      ),
+    };
+    publish();
+    return;
+  }
+  snapshot = {
+    ...snapshot,
+    initialized: true,
+    channels: [
+      ...snapshot.channels,
+      {
+        username,
+        title: extras?.title || username,
+        description: extras?.description || "",
+        addedAt: new Date().toISOString(),
+        postCount: 0,
+        resourceCount: 0,
+        status: extras?.status ?? "idle",
+        ...extras,
+      },
+    ],
+  };
+  publish();
+}
+
 function demoState(): CatalogState {
   const demo = buildDemoCatalog();
   return {
@@ -273,58 +342,10 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
     void hydrateFromBrowser();
   }, []);
 
-  const applySync = useCallback(
-    (username: string, result: SyncResult, more: boolean) => {
-      updateCatalog((prev) => {
-        const titles = mergeCatalog(prev.titles, result.titles);
-        const existing = prev.channels.find((c) =>
-          sameChannel(c.username, username),
-        );
-        const base: ChannelRecord = existing ?? {
-          ...result.channel,
-          username: result.channel.username || username,
-          addedAt: new Date().toISOString(),
-          postCount: 0,
-          resourceCount: 0,
-          status: "idle",
-        };
-        const nextChannel = recountChannel(base, titles, {
-          ...result.channel,
-          lastSyncedAt: new Date().toISOString(),
-          lastBefore: nextHistoryCursor({
-            more,
-            previous: existing?.lastBefore ?? base.lastBefore,
-            incoming: result.nextBefore,
-          }),
-          lastError: undefined,
-          status: "idle",
-          source: result.channel.source ?? existing?.source ?? base.source,
-          peerId: result.channel.peerId ?? existing?.peerId ?? base.peerId,
-          isPrivate: result.channel.isPrivate ?? existing?.isPrivate,
-          postCount: nextPostCount({
-            more,
-            previous: base.postCount,
-            incoming: result.posts.length,
-          }),
-        });
-        const storedUsername = existing?.username ?? result.channel.username ?? username;
-        const channels = existing
-          ? prev.channels.map((c) =>
-              sameChannel(c.username, username)
-                ? { ...nextChannel, username: storedUsername }
-                : c,
-            )
-          : [...prev.channels, { ...nextChannel, username: storedUsername }];
-        return { ...prev, titles, channels };
-      });
-    },
-    [],
-  );
-
   const syncOne = useCallback(
-    async (username: string, more = false) => {
-      const current = snapshot.channels.find((c) =>
-        sameChannel(c.username, username),
+    async (username: string, more = false, untilEnd = false) => {
+      const current = snapshot.channels.find((channel) =>
+        sameChannel(channel.username, username),
       );
       if (current?.isDemo) {
         toast.message("演示频道没有线上帖子", {
@@ -343,52 +364,59 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
       markSyncing(username, true);
 
       try {
-        let data: SyncResult & { error?: string; code?: string };
-        if (current?.source === "account") {
+        let passMore = more;
+        let posts = 0;
+        let usable = 0;
+        let skipped = 0;
+        let dropped = 0;
+        let exhausted = false;
+        let nextBefore: string | undefined;
+        let channelTitle: string | undefined;
+        let rounds = 0;
+        const maxPasses = untilEnd ? 4 : 1;
+
+        for (let pass = 0; pass < maxPasses; pass += 1) {
+          const live = snapshot.channels.find((channel) =>
+            sameChannel(channel.username, username),
+          );
           const auth = readAccountAuth();
-          if (!auth?.session) {
+          const useAccount = live?.source === "account";
+          if (useAccount && !auth?.session) {
             throw new Error("请先在「已登录账号」里完成验证。");
           }
-          const res = await fetch("/api/telegram/account/sync", {
+
+          const endpoint = useAccount
+            ? "/api/telegram/account/sync"
+            : "/api/channels/sync";
+          const res = await fetch(endpoint, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              session: auth.session,
-              apiId: auth.apiId,
-              apiHash: auth.apiHash,
-              username: current.username,
-              peerId: current.peerId,
-              offsetId: more && current.lastBefore ? Number(current.lastBefore) : undefined,
-              limit: more ? 60 : 80,
-            }),
+            body: JSON.stringify(
+              useAccount
+                ? {
+                    session: auth?.session,
+                    apiId: auth?.apiId,
+                    apiHash: auth?.apiHash,
+                    username: live?.username ?? username,
+                    peerId: live?.peerId,
+                    more: passMore,
+                    untilEnd,
+                    maxRounds: untilEnd ? 6 : 1,
+                  }
+                : {
+                    username,
+                    more: passMore,
+                    untilEnd,
+                    maxRounds: untilEnd ? 6 : 1,
+                    proxy: readStoredProxy() || undefined,
+                  },
+            ),
           });
-          const payload = (await res.json()) as {
-            result?: SyncResult;
-            session?: string;
-            error?: string;
-          };
-          if (!res.ok || !payload.result) {
-            throw new Error(payload.error || "同步失败");
+          const data = (await res.json()) as SyncReport;
+          if (data.session && auth) {
+            writeAccountAuth({ ...auth, session: data.session });
           }
-          if (payload.session) {
-            writeAccountAuth({ ...auth, session: payload.session });
-          }
-          data = payload.result;
-        } else {
-          const res = await fetch("/api/channels/sync", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              username,
-              before: more ? current?.lastBefore : undefined,
-              pages: more ? 2 : 3,
-              proxy: readStoredProxy() || undefined,
-            }),
-          });
-          data = (await res.json()) as SyncResult & {
-            error?: string;
-            code?: string;
-          };
+          if (data.state) adoptServerState(data.state);
           if (!res.ok) {
             const err = new Error(data.error || "同步失败") as Error & {
               code?: string;
@@ -396,33 +424,71 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
             err.code = data.code;
             throw err;
           }
+
+          posts += data.posts ?? 0;
+          usable += data.usable ?? 0;
+          skipped += data.skipped ?? 0;
+          dropped += data.dropped ?? 0;
+          rounds += data.rounds ?? 1;
+          exhausted = data.exhausted ?? !data.nextBefore;
+          nextBefore = data.nextBefore;
+          channelTitle = data.channelTitle ?? channelTitle;
+          if (!untilEnd || exhausted || !nextBefore) break;
+          passMore = true;
         }
-        applySync(username, data, more);
-        const usable = data.titles.filter(hasCloudOrMagnetLink).length;
-        const dropped = data.titles.length - usable;
+
         toast.success(
-          `读到 ${data.posts.length} 条帖子，识别出 ${usable} 部有网盘或磁力的影片`,
+          `读到 ${posts} 条帖子，识别出 ${usable} 部有网盘或磁力的影片`,
           {
             description: [
-              data.skipped > 0 ? `${data.skipped} 条不像影视资源` : "",
+              skipped > 0 ? `${skipped} 条不像影视资源` : "",
               dropped > 0 ? `${dropped} 部没有网盘或磁力` : "",
+              untilEnd
+                ? exhausted
+                  ? "已翻到最早的消息"
+                  : nextBefore
+                    ? `已连续 ${rounds} 轮，还可往前翻`
+                    : ""
+                : "",
+              !untilEnd && nextBefore ? "还可往前翻" : "",
+              channelTitle,
             ]
               .filter(Boolean)
-              .join("，") || data.channel.title,
+              .join(" · "),
           },
         );
         return true;
       } catch (error) {
         const message =
           error instanceof Error ? error.message : "同步失败，请稍后重试。";
-        updateCatalog((prev) => ({
-          ...prev,
-          channels: prev.channels.map((c) =>
-            sameChannel(c.username, username)
-              ? { ...c, status: "error", lastError: message }
-              : c,
-          ),
-        }));
+        const local = snapshot.channels.find((channel) =>
+          sameChannel(channel.username, username),
+        );
+        if (local?.lastError !== message) {
+          const applied = await postCatalogApply({
+            type: "channel-error",
+            username,
+            message,
+          });
+          if (applied.state) {
+            adoptServerState(applied.state);
+            if (
+              local &&
+              !applied.state.channels.some((channel) =>
+                sameChannel(channel.username, username),
+              )
+            ) {
+              rememberChannelPlaceholder(username, {
+                ...local,
+                status: "error",
+                lastError: message,
+              });
+            }
+          } else {
+            snapshot = markChannelErrorInState(snapshot, username, message);
+            publish();
+          }
+        }
         toast.error(message);
         if (
           typeof window !== "undefined" &&
@@ -439,32 +505,28 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
         markSyncing(username, false);
       }
     },
-    [applySync],
+    [],
   );
 
   const addAndSync = useCallback(
     async (username: string) => {
-      const exists = snapshot.channels.some(
-        (c) => c.username.toLowerCase() === username.toLowerCase(),
+      const exists = snapshot.channels.some((channel) =>
+        sameChannel(channel.username, username),
       );
-      if (exists) {
-        return syncOne(username);
+      if (!exists) {
+        rememberChannelPlaceholder(username);
       }
-      updateCatalog((prev) => ({
-        ...prev,
-        channels: [
-          ...prev.channels,
-          {
-            username,
-            title: username,
-            description: "",
-            addedAt: new Date().toISOString(),
-            postCount: 0,
-            resourceCount: 0,
-            status: "idle",
-          },
-        ],
-      }));
+      return syncOne(username);
+    },
+    [syncOne],
+  );
+
+  const addAccountAndSync = useCallback(
+    async (username: string, peerId?: string) => {
+      rememberChannelPlaceholder(username, {
+        source: "account",
+        peerId,
+      });
       return syncOne(username);
     },
     [syncOne],
@@ -472,7 +534,7 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
 
   const syncAll = useCallback(async () => {
     const targets = snapshot.channels.filter(
-      (c) => !c.isDemo && c.source !== "export",
+      (channel) => !channel.isDemo && channel.source !== "export",
     );
     if (!targets.length) {
       toast.message("没有可同步的公开频道");
@@ -484,93 +546,63 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
   }, [syncOne]);
 
   const ingestSyncResult = useCallback(
-    (result: SyncResult, more = false) => {
-      applySync(result.channel.username, result, more);
+    async (result: SyncResult, more = false) => {
+      const applied = await postCatalogApply({
+        type: "sync",
+        username: result.channel.username,
+        result,
+        more,
+      });
+      if (!applied.ok || !applied.state) {
+        toast.error(applied.error || "写入片库失败");
+        return false;
+      }
+      adoptServerState(applied.state);
       const usable = result.titles.filter(hasCloudOrMagnetLink).length;
       const dropped = result.titles.length - usable;
       toast.success(
         `读到 ${result.posts.length} 条帖子，识别出 ${usable} 部有网盘或磁力的影片`,
         {
-          description: [
-            result.skipped > 0 ? `${result.skipped} 条不像影视资源` : "",
-            dropped > 0 ? `${dropped} 部没有网盘或磁力` : "",
-          ]
-            .filter(Boolean)
-            .join("，") || result.channel.title,
+          description:
+            [
+              result.skipped > 0 ? `${result.skipped} 条不像影视资源` : "",
+              dropped > 0 ? `${dropped} 部没有网盘或磁力` : "",
+            ]
+              .filter(Boolean)
+              .join("，") || result.channel.title,
         },
       );
+      return true;
     },
-    [applySync],
+    [],
   );
 
   const importText = useCallback(async (text: string) => {
-    const res = await fetch("/api/parse", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text }),
-    });
-    const data = (await res.json()) as {
-      titles?: TitleRecord[];
-      skipped?: number;
-      posts?: number;
-      error?: string;
-    };
-    if (!res.ok) {
-      toast.error(data.error || "解析失败");
+    const applied = await postCatalogApply({ type: "import", text });
+    if (!applied.ok || !applied.state) {
+      toast.error(applied.error || "解析失败");
       return false;
     }
-    const incoming = (data.titles ?? []).filter(hasCloudOrMagnetLink);
-    const dropped = (data.titles ?? []).length - incoming.length;
-    updateCatalog((prev) => {
-      const titles = mergeCatalog(prev.titles, incoming);
-      const imported =
-        prev.channels.find((c) => c.username === "imported") ??
-        ({
-          username: "imported",
-          title: "手动导入",
-          description: "从粘贴的频道帖子解析而来。",
-          addedAt: new Date().toISOString(),
-          postCount: 0,
-          resourceCount: 0,
-          status: "idle" as const,
-        } satisfies ChannelRecord);
-      const channel = recountChannel(imported, titles, {
-        lastSyncedAt: new Date().toISOString(),
-        postCount: imported.postCount + (data.posts ?? 0),
-        status: "idle",
-      });
-      const channels = prev.channels.some((c) => c.username === "imported")
-        ? prev.channels.map((c) => (c.username === "imported" ? channel : c))
-        : [...prev.channels, channel];
-      return { ...prev, titles, channels };
-    });
-    toast.success(`导入 ${incoming.length} 部有网盘或磁力的影片`, {
-      description: [
-        (data.skipped ?? 0) > 0 ? `跳过 ${data.skipped} 条无法识别` : "",
-        dropped > 0 ? `${dropped} 部没有网盘或磁力` : "",
-      ]
-        .filter(Boolean)
-        .join("，") || undefined,
+    adoptServerState(applied.state);
+    toast.success(`导入 ${applied.usable ?? 0} 部有网盘或磁力的影片`, {
+      description:
+        [
+          (applied.skipped ?? 0) > 0 ? `跳过 ${applied.skipped} 条无法识别` : "",
+          (applied.dropped ?? 0) > 0 ? `${applied.dropped} 部没有网盘或磁力` : "",
+        ]
+          .filter(Boolean)
+          .join("，") || undefined,
     });
     return true;
   }, []);
 
-  const removeChannel = useCallback((username: string) => {
-    updateCatalog((prev) => {
-      const titles = prev.titles
-        .map((title) => ({
-          ...title,
-          editions: title.editions.filter(
-            (e) => !sameChannel(e.channel, username),
-          ),
-        }))
-        .filter((title) => title.editions.length > 0);
-      return {
-        ...prev,
-        titles,
-        channels: prev.channels.filter((c) => !sameChannel(c.username, username)),
-      };
-    });
+  const removeChannel = useCallback(async (username: string) => {
+    const applied = await postCatalogApply({ type: "remove", username });
+    if (!applied.ok || !applied.state) {
+      toast.error(applied.error || "移除频道失败");
+      return;
+    }
+    adoptServerState(applied.state);
     setSelectedId(null);
     toast.success("已移除频道及相关片源");
   }, []);
@@ -603,7 +635,7 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const selectedTitle = useMemo(
-    () => state.titles.find((t) => t.id === selectedId) ?? null,
+    () => state.titles.find((title) => title.id === selectedId) ?? null,
     [selectedId, state.titles],
   );
 
@@ -615,6 +647,7 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
       setSelectedId,
       selectedTitle,
       addAndSync,
+      addAccountAndSync,
       syncOne,
       syncAll,
       importText,
@@ -630,6 +663,7 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
       selectedId,
       selectedTitle,
       addAndSync,
+      addAccountAndSync,
       syncOne,
       syncAll,
       importText,

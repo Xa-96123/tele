@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import {
   Download,
   FileUp,
+  History,
   Loader2,
   RefreshCw,
   Trash2,
@@ -97,7 +98,7 @@ export function ChannelManager() {
             频道
           </h1>
           <p className="mt-1 max-w-xl text-sm text-muted-foreground">
-            直接用 Telegram 网页版即可，不必创建应用程序。公开频道贴链接，私密频道复制帖子。
+            直接用 Telegram 网页版即可，不必创建应用程序。公开频道贴链接，私密频道复制帖子。同步结果写入本机 SQLite；「翻完历史」会按游标连续往前翻。
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -201,7 +202,11 @@ export function ChannelManager() {
                       {channel.lastSyncedAt
                         ? ` · ${formatRelativeTime(channel.lastSyncedAt)}同步`
                         : ""}
-                      {channel.lastBefore ? " · 还可往前翻" : ""}
+                      {channel.lastBefore
+                        ? " · 还可往前翻"
+                        : channel.lastSyncedAt
+                          ? " · 已到最早"
+                          : ""}
                       {channel.subscribers ? ` · ${channel.subscribers} 订阅` : ""}
                     </p>
                     {channel.lastError ? (
@@ -238,9 +243,27 @@ export function ChannelManager() {
                     再往前翻
                   </Button>
                   <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={
+                      channel.status === "syncing" ||
+                      channel.isDemo ||
+                      channel.source === "export"
+                    }
+                    title="从当前进度连续向更早的消息翻页，直到没有更早的消息或达到本轮上限"
+                    onClick={() => void syncOne(channel.username, false, true)}
+                  >
+                    {channel.status === "syncing" ? (
+                      <Loader2 data-icon="inline-start" className="animate-spin" />
+                    ) : (
+                      <History data-icon="inline-start" />
+                    )}
+                    翻完历史
+                  </Button>
+                  <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() => removeChannel(channel.username)}
+                    onClick={() => void removeChannel(channel.username)}
                   >
                     <Trash2 data-icon="inline-start" />
                     移除

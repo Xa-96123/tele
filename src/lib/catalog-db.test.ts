@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import {
+  applyAndSave,
   catalogTableCounts,
   closeCatalogDb,
   emptyCatalogState,
@@ -117,6 +118,36 @@ test("replaceCatalogState writes normalized tables and reads back", () => {
     assert.equal(loaded.titles[0]?.posterUrl, undefined);
     assert.equal(loaded.titles[0]?.editions[0]?.photoUrl, undefined);
     assert.ok((loaded.titles[0]?.editions[0]?.rawText.length ?? 0) < edition.rawText.length);
+  } finally {
+    closeCatalogDb(file);
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("applyAndSave reads, mutates, and writes sqlite tables", () => {
+  const { file, dir } = tempDb();
+  try {
+    replaceCatalogState(catalog, file);
+    const next = applyAndSave(
+      (state) => ({
+        ...state,
+        channels: state.channels.map((channel) => ({
+          ...channel,
+          lastBefore: "40",
+          postCount: channel.postCount + 3,
+        })),
+      }),
+      file,
+    );
+    assert.equal(next.channels[0]?.lastBefore, "40");
+    assert.equal(next.channels[0]?.postCount, 15);
+    assert.equal(readCatalogState(file).channels[0]?.lastBefore, "40");
+    assert.deepEqual(catalogTableCounts(file), {
+      channels: 1,
+      titles: 1,
+      editions: 1,
+      links: 2,
+    });
   } finally {
     closeCatalogDb(file);
     rmSync(dir, { recursive: true, force: true });

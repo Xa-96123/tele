@@ -32,7 +32,7 @@ export function AccountPanel({
   onUseExport?: () => void;
   onUseWeb?: () => void;
 }) {
-  const { ingestSyncResult } = useCatalog();
+  const { addAccountAndSync } = useCatalog();
   const [config, setConfig] = useState<Config>({ hasServerCredentials: false });
   const [apiId, setApiId] = useState("");
   const [apiHash, setApiHash] = useState("");
@@ -228,29 +228,10 @@ export function AccountPanel({
     try {
       const current = readAccountAuth();
       if (!current) throw new Error("请先登录。");
-      const res = await fetch("/api/telegram/account/sync", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          session: current.session,
-          apiId: current.apiId,
-          apiHash: current.apiHash,
-          username: channel.username,
-          peerId: channel.peerId,
-          limit: 80,
-        }),
-      });
-      const data = (await res.json()) as {
-        result?: Parameters<typeof ingestSyncResult>[0];
-        session?: string;
-        error?: string;
-      };
-      if (!res.ok || !data.result) throw new Error(data.error || "提取失败");
-      if (data.session) {
-        writeAccountAuth({ ...current, session: data.session });
-        setAuth({ ...current, session: data.session });
-      }
-      ingestSyncResult(data.result);
+      const ok = await addAccountAndSync(channel.username, channel.peerId);
+      const latest = readAccountAuth();
+      if (latest) setAuth(latest);
+      if (!ok) return;
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "提取失败");
     } finally {
