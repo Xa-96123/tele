@@ -223,7 +223,8 @@ export function ChannelManager() {
                     disabled={
                       channel.status === "syncing" ||
                       channel.isDemo ||
-                      channel.source === "export"
+                      channel.source === "export" ||
+                      channel.username === "imported"
                     }
                     onClick={() => void syncOne(channel.username)}
                   >
@@ -236,6 +237,7 @@ export function ChannelManager() {
                       channel.status === "syncing" ||
                       channel.isDemo ||
                       channel.source === "export" ||
+                      channel.username === "imported" ||
                       !channel.lastBefore
                     }
                     onClick={() => void syncOne(channel.username, true)}
@@ -248,7 +250,8 @@ export function ChannelManager() {
                     disabled={
                       channel.status === "syncing" ||
                       channel.isDemo ||
-                      channel.source === "export"
+                      channel.source === "export" ||
+                      channel.username === "imported"
                     }
                     title="从当前进度连续向更早的消息翻页，直到没有更早的消息或达到本轮上限"
                     onClick={() => void syncOne(channel.username, false, true)}

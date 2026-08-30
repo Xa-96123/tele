@@ -361,6 +361,13 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
         return false;
       }
 
+      if (sameChannel(username, "imported")) {
+        toast.message("手动导入的帖子无法在线刷新", {
+          description: "请再次粘贴帖子，或添加真实频道。",
+        });
+        return false;
+      }
+
       markSyncing(username, true);
 
       try {

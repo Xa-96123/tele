@@ -51,13 +51,13 @@ export async function POST(request: NextRequest) {
       const parsed = parsePlainPosts(text, "imported", "手动导入");
       const usable = parsed.titles.filter(hasCloudOrMagnetLink).length;
       const state = applyAndSave((current) =>
-        applyImport(current, parsed.titles, parsed.posts.length),
+        applyImport(current, parsed.titles, parsed.posts),
       );
       return Response.json({
         ok: true,
         state,
         skipped: parsed.skipped,
-        posts: parsed.posts.length,
+        posts: parsed.posts,
         usable,
         dropped: parsed.titles.length - usable,
       });
