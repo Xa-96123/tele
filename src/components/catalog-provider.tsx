@@ -16,6 +16,11 @@ import {
   nextPostCount,
   recountChannel,
 } from "@/lib/catalog";
+import {
+  compactCatalog,
+  loadCatalog,
+  persistCatalog,
+} from "@/lib/catalog-storage";
 import { hasCloudOrMagnetLink } from "@/lib/labels";
 import { buildDemoCatalog } from "@/lib/demo-data";
 import { readAccountAuth, writeAccountAuth } from "@/lib/account-session";
@@ -26,8 +31,6 @@ import type {
   SyncResult,
   TitleRecord,
 } from "@/lib/types";
-
-const STORAGE_KEY = "yingqu.catalog.v1";
 
 const SERVER_SNAPSHOT: CatalogState = {
   version: 1,
@@ -66,21 +69,11 @@ const CatalogContext = createContext<CatalogContextValue | null>(null);
 
 const listeners = new Set<() => void>();
 let snapshot: CatalogState = SERVER_SNAPSHOT;
-let hydrated = false;
-
-function readStore(): CatalogState {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return emptyState();
-    const parsed = JSON.parse(raw) as CatalogState;
-    if (parsed.version !== 1 || !Array.isArray(parsed.titles)) {
-      return emptyState();
-    }
-    return pruneUnshareable(parsed);
-  } catch {
-    return emptyState();
-  }
-}
+let clientReady = false;
+let dirtyDuringHydrate = false;
+let persistFailedToastShown = false;
+let hydratePromise: Promise<void> | null = null;
+let persistChain: Promise<void> = Promise.resolve();
 
 function pruneUnshareable(state: CatalogState): CatalogState {
   const titles = state.titles.filter(hasCloudOrMagnetLink);
@@ -92,46 +85,102 @@ function pruneUnshareable(state: CatalogState): CatalogState {
   };
 }
 
+function notifyListeners() {
+  listeners.forEach((listener) => listener());
+}
+
 function persist(next: CatalogState, notify = true) {
-  snapshot = next;
-  if (typeof window !== "undefined") {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+  try {
+    const pruned = pruneUnshareable(next);
+    snapshot = clientReady ? compactCatalog(pruned) : pruned;
+  } catch {
+    snapshot = next;
   }
-  if (notify) listeners.forEach((listener) => listener());
+  if (!clientReady) dirtyDuringHydrate = true;
+  if (notify) {
+    try {
+      notifyListeners();
+    } catch {
+      // listeners must not break persist
+    }
+  }
+  if (typeof window === "undefined" || !clientReady) return;
+  schedulePersist();
+}
+
+function schedulePersist() {
+  persistChain = persistChain
+    .catch(() => undefined)
+    .then(async () => {
+      const result = await persistCatalog(snapshot);
+      if (result.ok) {
+        persistFailedToastShown = false;
+        return;
+      }
+      if (persistFailedToastShown) return;
+      persistFailedToastShown = true;
+      toast.error(
+        result.error === "quota"
+          ? "浏览器存储已满，本次同步仍留在当前页，刷新后可能丢失新增内容。"
+          : "片库未能写入浏览器存储，本次数据仍留在当前页。",
+      );
+    })
+    .catch(() => undefined);
 }
 
 function hydrateFromBrowser() {
-  if (hydrated || typeof window === "undefined") return;
-  hydrated = true;
-  try {
-    const stored = readStore();
-    if (!stored.initialized) {
-      const demo = buildDemoCatalog();
-      snapshot = {
-        version: 1,
-        initialized: true,
-        noticeDismissed: false,
-        channels: demo.channels,
-        titles: demo.titles,
-      };
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
-      return;
+  if (typeof window === "undefined") return hydratePromise;
+  if (hydratePromise) return hydratePromise;
+
+  hydratePromise = (async () => {
+    let skipPersist = false;
+    try {
+      const loaded = await loadCatalog();
+      if (dirtyDuringHydrate && snapshot.initialized) {
+        // A mutation landed before IndexedDB finished; keep it.
+      } else if (loaded.status === "ready") {
+        snapshot = pruneUnshareable(loaded.state);
+      } else if (loaded.status === "idb-unavailable") {
+        skipPersist = true;
+        snapshot = {
+          version: 1,
+          initialized: true,
+          noticeDismissed: true,
+          channels: [],
+          titles: [],
+        };
+        toast.error("无法读取本机片库，请稍后刷新重试。");
+      } else {
+        const demo = buildDemoCatalog();
+        snapshot = {
+          version: 1,
+          initialized: true,
+          noticeDismissed: false,
+          channels: demo.channels,
+          titles: demo.titles,
+        };
+      }
+    } catch {
+      if (!snapshot.initialized) {
+        snapshot = emptyState();
+      }
+    } finally {
+      clientReady = true;
+      notifyListeners();
+      if (!skipPersist) schedulePersist();
     }
-    snapshot = stored;
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
-  } catch {
-    snapshot = emptyState();
-  }
+  })();
+
+  return hydratePromise;
 }
 
 function subscribe(listener: () => void) {
-  hydrateFromBrowser();
   listeners.add(listener);
+  void hydrateFromBrowser();
   return () => listeners.delete(listener);
 }
 
 function getSnapshot() {
-  hydrateFromBrowser();
   return snapshot;
 }
 
@@ -140,7 +189,7 @@ function getServerSnapshot() {
 }
 
 function getClientReady() {
-  return true;
+  return clientReady;
 }
 
 function getServerReady() {
