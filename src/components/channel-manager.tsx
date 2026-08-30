@@ -201,6 +201,7 @@ export function ChannelManager() {
                       {channel.lastSyncedAt
                         ? ` · ${formatRelativeTime(channel.lastSyncedAt)}同步`
                         : ""}
+                      {channel.lastBefore ? " · 还可往前翻" : ""}
                       {channel.subscribers ? ` · ${channel.subscribers} 订阅` : ""}
                     </p>
                     {channel.lastError ? (

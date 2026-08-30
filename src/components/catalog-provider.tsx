@@ -10,7 +10,12 @@ import {
   type ReactNode,
 } from "react";
 import { toast } from "sonner";
-import { mergeCatalog, recountChannel } from "@/lib/catalog";
+import {
+  mergeCatalog,
+  nextHistoryCursor,
+  nextPostCount,
+  recountChannel,
+} from "@/lib/catalog";
 import { hasCloudOrMagnetLink } from "@/lib/labels";
 import { buildDemoCatalog } from "@/lib/demo-data";
 import { readAccountAuth, writeAccountAuth } from "@/lib/account-session";
@@ -167,13 +172,21 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
         const nextChannel = recountChannel(base, titles, {
           ...result.channel,
           lastSyncedAt: new Date().toISOString(),
-          lastBefore: result.nextBefore,
+          lastBefore: nextHistoryCursor({
+            more,
+            previous: existing?.lastBefore ?? base.lastBefore,
+            incoming: result.nextBefore,
+          }),
           lastError: undefined,
           status: "idle",
           source: result.channel.source ?? existing?.source ?? base.source,
           peerId: result.channel.peerId ?? existing?.peerId ?? base.peerId,
           isPrivate: result.channel.isPrivate ?? existing?.isPrivate,
-          postCount: (more ? base.postCount : 0) + result.posts.length,
+          postCount: nextPostCount({
+            more,
+            previous: base.postCount,
+            incoming: result.posts.length,
+          }),
         });
         const channels = existing
           ? prev.channels.map((c) =>

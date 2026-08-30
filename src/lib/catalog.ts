@@ -189,6 +189,24 @@ export function uniqueResolutions(title: TitleRecord): string[] {
   ];
 }
 
+export function nextHistoryCursor(options: {
+  more: boolean;
+  previous?: string;
+  incoming?: string;
+}): string | undefined {
+  if (options.more) return options.incoming;
+  return options.previous ?? options.incoming;
+}
+
+export function nextPostCount(options: {
+  more: boolean;
+  previous: number;
+  incoming: number;
+}): number {
+  if (options.more) return options.previous + options.incoming;
+  return Math.max(options.previous, options.incoming);
+}
+
 export function uniqueLinkKinds(title: TitleRecord): string[] {
   return [
     ...new Set(title.editions.flatMap((e) => e.links.map((l) => l.kind))),
