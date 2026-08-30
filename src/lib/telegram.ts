@@ -1,4 +1,5 @@
 import { channelUrl, normalizeChannelUsername } from "@/lib/channel";
+import { describeProxy, proxyAwareFetch } from "@/lib/proxy-fetch";
 import {
   looksLikeTelegramPreview,
   parsePostToTitle,
@@ -52,11 +53,14 @@ export function buildPreviewCandidates(
   ];
 }
 
-async function fetchOne(candidate: PreviewCandidate): Promise<string> {
+async function fetchOne(
+  candidate: PreviewCandidate,
+  proxy?: string | null,
+): Promise<string> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 12000);
   try {
-    const res = await fetch(candidate.url, {
+    const res = await proxyAwareFetch(candidate.url, {
       headers: {
         "User-Agent": UA,
         Accept: "text/html,application/xhtml+xml",
@@ -64,8 +68,7 @@ async function fetchOne(candidate: PreviewCandidate): Promise<string> {
         ...candidate.headers,
       },
       signal: controller.signal,
-      cache: "no-store",
-      redirect: "follow",
+      proxy,
     });
     if (!res.ok) {
       throw new ChannelFetchError(
@@ -83,13 +86,17 @@ async function fetchOne(candidate: PreviewCandidate): Promise<string> {
   }
 }
 
-async function fetchPreviewPage(username: string, before?: string) {
+async function fetchPreviewPage(
+  username: string,
+  before?: string,
+  proxy?: string | null,
+) {
   const candidates = buildPreviewCandidates(username, before);
   let lastError: unknown;
 
   for (const candidate of candidates) {
     try {
-      return await fetchOne(candidate);
+      return await fetchOne(candidate, proxy);
     } catch (error) {
       lastError = error;
     }
@@ -101,8 +108,11 @@ async function fetchPreviewPage(username: string, before?: string) {
   if (lastError instanceof Error && lastError.name === "AbortError") {
     throw new ChannelFetchError("读取频道预览超时，请稍后重试。", 504);
   }
+  const via = describeProxy(proxy);
   throw new ChannelFetchError(
-    "当前网络访问不了 t.me 公开预览。请在 web.telegram.org 打开频道，复制影片帖子后再点「粘贴导入」。",
+    via
+      ? `已经走了本地代理 ${via}，仍然读不到 t.me。请确认 Clash/VPN 已开启系统代理或允许终端走代理，端口是否正确。`
+      : "Node 服务没有走你本机的 VPN/代理（浏览器能上网也不等于 next dev 能访问 t.me）。请在「网页版」填入本地代理，例如 Clash 的 http://127.0.0.1:7890。",
     502,
     "preview_blocked",
   );
@@ -112,6 +122,7 @@ export async function syncPublicChannel(options: {
   username: string;
   before?: string;
   pages?: number;
+  proxy?: string | null;
 }): Promise<SyncResult> {
   const username = normalizeChannelUsername(options.username);
   if (!username) {
@@ -131,7 +142,7 @@ export async function syncPublicChannel(options: {
   const allPosts: ChannelPost[] = [];
 
   for (let i = 0; i < pages; i += 1) {
-    const html = await fetchPreviewPage(username, before);
+    const html = await fetchPreviewPage(username, before, options.proxy);
     const parsed = await parsePreviewHtmlAsync(html, username);
     if (i === 0) channel = parsed.channel;
     if (!parsed.posts.length && i === 0) {

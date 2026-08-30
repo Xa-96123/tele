@@ -29,6 +29,14 @@ npm install
 npm run dev
 ```
 
+本机开了 Clash / VPN 但公开预览仍失败时，让 Node 走本地代理：
+
+```bash
+HTTPS_PROXY=http://127.0.0.1:7890 npm run dev
+```
+
+也可以在「频道 → 网页版」填写或检测 `127.0.0.1:7890`，不必重启。
+
 浏览器打开 [http://127.0.0.1:43141](http://127.0.0.1:43141)。
 
 Mac 上如果出现 `@next/swc-darwin-arm64` 损坏或 Turbopack 不可用，多半是 `node_modules` 不完整，或上层目录有多余的 `package-lock.json`。删掉依赖后在 **tele** 目录重新 `npm install`。开发脚本已改用 Webpack，不依赖 Turbopack 原生绑定。
@@ -48,7 +56,7 @@ npm run build
 
 [my.telegram.org/apps](https://my.telegram.org/apps) 点「Create application」报 ERROR、空白或没反应很常见。影渠**不依赖**这一步。
 
-优先用 Telegram 网页版：打开 [web.telegram.org](https://web.telegram.org/k/)，把公开频道链接贴进「频道 → 网页版」。本机如果打不开 t.me，影渠会改走备用读取；仍失败时会自动打开「粘贴导入」，把网页版里复制的影片帖贴进去即可。也可以继续用桌面导出。
+优先用 Telegram 网页版：打开 [web.telegram.org](https://web.telegram.org/k/)，把公开频道链接贴进「频道 → 网页版」。本机开了 VPN 但提取仍失败，多半是 `next dev` 没走系统代理。在「频道 → 网页版」填 Clash 常见端口 `http://127.0.0.1:7890`，或启动时加上 `HTTPS_PROXY=http://127.0.0.1:7890`。也可以点「检测端口」。仍失败再用粘贴导入或桌面导出。
 
 ### 可选：把 API 凭证写进环境变量
 

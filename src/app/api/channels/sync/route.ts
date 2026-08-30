@@ -2,7 +2,12 @@ import { NextRequest } from "next/server";
 import { ChannelFetchError, syncPublicChannel } from "@/lib/telegram";
 
 export async function POST(request: NextRequest) {
-  let body: { username?: string; before?: string; pages?: number };
+  let body: {
+    username?: string;
+    before?: string;
+    pages?: number;
+    proxy?: string;
+  };
   try {
     body = await request.json();
   } catch {
@@ -14,6 +19,7 @@ export async function POST(request: NextRequest) {
       username: body.username ?? "",
       before: body.before,
       pages: body.pages,
+      proxy: body.proxy,
     });
     return Response.json(result);
   } catch (error) {

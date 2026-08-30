@@ -13,6 +13,7 @@ import { toast } from "sonner";
 import { mergeCatalog, recountChannel } from "@/lib/catalog";
 import { buildDemoCatalog } from "@/lib/demo-data";
 import { readAccountAuth, writeAccountAuth } from "@/lib/account-session";
+import { readStoredProxy } from "@/lib/local-proxy";
 import type {
   CatalogState,
   ChannelRecord,
@@ -239,6 +240,7 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
               username,
               before: more ? current?.lastBefore : undefined,
               pages: more ? 2 : 3,
+              proxy: readStoredProxy() || undefined,
             }),
           });
           data = (await res.json()) as SyncResult & {

@@ -13,6 +13,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { LocalProxySettings } from "@/components/local-proxy-settings";
 import {
   channelInputError,
   parseChannelInput,
@@ -116,6 +117,7 @@ export function TelegramWebPanel({
             打开 Telegram 网页版
           </Button>
         </div>
+        <LocalProxySettings />
         <p className="text-xs text-muted-foreground">
           影渠读的是 t.me 公开预览或你粘贴的原文，不会登录你的
           web.telegram.org 会话，也不会下载视频。
