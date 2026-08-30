@@ -61,6 +61,7 @@ export function ChannelManager() {
   const [importValue, setImportValue] = useState("");
   const [importing, setImporting] = useState(false);
   const [syncingAll, setSyncingAll] = useState(false);
+  const [sourceTab, setSourceTab] = useState("export");
 
   async function onAdd(e: FormEvent) {
     e.preventDefault();
@@ -103,7 +104,8 @@ export function ChannelManager() {
             频道
           </h1>
           <p className="mt-1 max-w-xl text-sm text-muted-foreground">
-            Mac 上已经登录 Telegram 的话，用验证码授权即可读取你加入的频道；也可以导入桌面版官方导出。公开频道仍可用网页预览。
+            my.telegram.org 创建不了应用时，用「桌面导出」即可，不需要 api_id。
+            公开频道也可以直接填用户名。账号登录是可选项。
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -122,14 +124,19 @@ export function ChannelManager() {
         </div>
       </div>
 
-      <Tabs defaultValue="account">
+      <Tabs
+        value={sourceTab}
+        onValueChange={(next) => {
+          if (next) setSourceTab(next);
+        }}
+      >
         <TabsList variant="line" className="w-full max-w-xl">
-          <TabsTrigger value="account">已登录账号</TabsTrigger>
           <TabsTrigger value="export">桌面导出</TabsTrigger>
           <TabsTrigger value="preview">公开预览</TabsTrigger>
+          <TabsTrigger value="account">已登录账号</TabsTrigger>
         </TabsList>
         <TabsContent value="account" className="mt-4">
-          <AccountPanel />
+          <AccountPanel onUseExport={() => setSourceTab("export")} />
         </TabsContent>
         <TabsContent value="export" className="mt-4">
           <ExportPanel />

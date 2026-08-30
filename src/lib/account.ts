@@ -31,7 +31,7 @@ export function resolveApiCredentials(input: {
   const apiHash = String(input.apiHash || process.env.TELEGRAM_API_HASH || "").trim();
   if (!apiId || !apiHash) {
     throw new AccountError(
-      "请填写 API ID 和 API Hash。打开 https://my.telegram.org → API development tools，用与 Mac Telegram 相同的手机号申请。",
+      "还没有 API ID / Hash。可打开 https://my.telegram.org/apps 查看是否已经有应用；若创建不了，请改用「频道 → 桌面导出」，不需要申请应用程序。",
     );
   }
   return { apiId, apiHash };

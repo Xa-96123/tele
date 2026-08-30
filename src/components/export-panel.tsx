@@ -59,16 +59,31 @@ export function ExportPanel() {
       <CardHeader>
         <CardTitle>从 Telegram 桌面版导出</CardTitle>
         <CardDescription>
-          适合已经在 Mac 上看过、但不想再授权一次的频道。官方导出只包含你选中的聊天记录。
+          不需要在 my.telegram.org 创建应用程序，也不需要 api_id。官方导出只包含你勾选的聊天。
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        <ol className="list-decimal space-y-1 pl-5 text-sm text-muted-foreground">
-          <li>打开 Mac 上的 Telegram → 设置（左下齿轮）→ 高级 → 导出 Telegram 数据。</li>
-          <li>格式选 JSON，只勾选要汇总的电影频道。</li>
-          <li>导出完成后，把每个频道文件夹里的 <code className="text-foreground">result.json</code> 拖到下面。</li>
+        <ol className="list-decimal space-y-1.5 pl-5 text-sm text-muted-foreground">
+          <li>打开 Mac 上已经登录的 Telegram。</li>
+          <li>左下角齿轮 → 设置 → 高级 → 导出 Telegram 数据。</li>
+          <li>
+            格式选 <span className="text-foreground">JSON</span>
+            ，照片和视频不用勾，只勾选要汇总的电影频道。
+          </li>
+          <li>
+            导出完成后，打开那个文件夹，把每个频道里的{" "}
+            <code className="text-foreground">result.json</code>{" "}
+            （或 messages.html）拖到下面。
+          </li>
         </ol>
-        <label className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border border-dashed px-4 py-10 text-sm hover:bg-muted/40">
+        <label
+          className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border border-dashed px-4 py-10 text-sm hover:bg-muted/40"
+          onDragOver={(event) => event.preventDefault()}
+          onDrop={(event) => {
+            event.preventDefault();
+            void onFiles(event.dataTransfer.files);
+          }}
+        >
           {busy ? (
             <Loader2 className="size-5 animate-spin" />
           ) : (
