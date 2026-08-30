@@ -1,16 +1,16 @@
+import { summarizeSync } from "@/lib/catalog-apply";
+import { applyCatalogPatch } from "@/lib/catalog-patch";
 import {
-  applySyncResult,
-  markChannelErrorInState,
-  summarizeSync,
-} from "@/lib/catalog-apply";
-import { sameChannel } from "@/lib/catalog";
-import { applyAndSave, readCatalogState } from "@/lib/catalog-db";
+  applySyncToSqlite,
+  markChannelErrorInSqlite,
+  readChannelRecord,
+} from "@/lib/catalog-db";
 import { syncAccountChannel } from "@/lib/account";
 import { syncPublicChannel } from "@/lib/telegram";
-import type { CatalogState } from "@/lib/types";
+import type { CatalogPatch } from "@/lib/types";
 
 export type IngestReport = {
-  state: CatalogState;
+  patch: CatalogPatch;
   exhausted: boolean;
   rounds: number;
   posts: number;
@@ -24,7 +24,7 @@ export type IngestReport = {
 
 function recordSyncError(username: string, error: unknown) {
   const message = error instanceof Error ? error.message : "同步失败";
-  applyAndSave((prev) => markChannelErrorInState(prev, username, message));
+  markChannelErrorInSqlite(username, message);
 }
 
 function cursorDidNotAdvance(
@@ -33,6 +33,24 @@ function cursorDidNotAdvance(
   incoming: string | undefined,
 ) {
   return Boolean(more && previous && incoming && incoming === previous);
+}
+
+function accumulatePatch(current: CatalogPatch, next: CatalogPatch): CatalogPatch {
+  const merged = applyCatalogPatch(
+    {
+      version: 1,
+      initialized: true,
+      noticeDismissed: false,
+      channels: current.channels ?? [],
+      titles: current.titles ?? [],
+    },
+    next,
+  );
+  return {
+    initialized: true,
+    channels: merged.channels,
+    titles: merged.titles,
+  };
 }
 
 export async function ingestPublicChannelToSqlite(options: {
@@ -50,10 +68,7 @@ export async function ingestPublicChannelToSqlite(options: {
     : 1;
   let more = Boolean(options.more);
   if (untilEnd && !more) {
-    const existing = readCatalogState().channels.find((channel) =>
-      sameChannel(channel.username, username),
-    );
-    more = Boolean(existing?.lastBefore);
+    more = Boolean(readChannelRecord(username)?.lastBefore);
   }
 
   let rounds = 0;
@@ -64,22 +79,21 @@ export async function ingestPublicChannelToSqlite(options: {
   let nextBefore: string | undefined;
   let channelTitle: string | undefined;
   let exhausted = false;
-  let state = readCatalogState();
+  let patch: CatalogPatch = { initialized: true, channels: [], titles: [] };
+  let channel = readChannelRecord(username);
 
   try {
     while (rounds < maxRounds) {
-      const current = state.channels.find((channel) =>
-        sameChannel(channel.username, username),
-      );
+      const previousCursor = more ? channel?.lastBefore : undefined;
       const result = await syncPublicChannel({
         username,
-        before: more ? current?.lastBefore : undefined,
+        before: previousCursor,
         pages: options.pages ?? (more ? 2 : 3),
         proxy: options.proxy,
       });
-      state = applyAndSave((prev) =>
-        applySyncResult(prev, username, result, more),
-      );
+      const roundPatch = applySyncToSqlite(username, result, more);
+      patch = accumulatePatch(patch, roundPatch);
+      channel = roundPatch.channels?.[0] ?? readChannelRecord(username);
       const summary = summarizeSync(result);
       rounds += 1;
       posts += summary.posts;
@@ -90,7 +104,7 @@ export async function ingestPublicChannelToSqlite(options: {
       channelTitle = result.channel.title;
       if (
         !result.nextBefore ||
-        cursorDidNotAdvance(more, current?.lastBefore, result.nextBefore)
+        cursorDidNotAdvance(more, previousCursor, result.nextBefore)
       ) {
         exhausted = true;
         break;
@@ -99,7 +113,7 @@ export async function ingestPublicChannelToSqlite(options: {
       more = true;
     }
     return {
-      state,
+      patch,
       exhausted,
       rounds,
       posts,
@@ -132,10 +146,7 @@ export async function ingestAccountChannelToSqlite(options: {
     : 1;
   let more = Boolean(options.more);
   if (untilEnd && !more) {
-    const existing = readCatalogState().channels.find((channel) =>
-      sameChannel(channel.username, username),
-    );
-    more = Boolean(existing?.lastBefore);
+    more = Boolean(readChannelRecord(username)?.lastBefore);
   }
 
   let rounds = 0;
@@ -147,28 +158,26 @@ export async function ingestAccountChannelToSqlite(options: {
   let channelTitle: string | undefined;
   let exhausted = false;
   let session = options.session;
-  let state = readCatalogState();
+  let patch: CatalogPatch = { initialized: true, channels: [], titles: [] };
+  let channel = readChannelRecord(username);
 
   try {
     while (rounds < maxRounds) {
-      const current = state.channels.find((channel) =>
-        sameChannel(channel.username, username),
-      );
+      const previousCursor = more ? channel?.lastBefore : undefined;
       const synced = await syncAccountChannel({
         session,
         apiId: options.apiId,
         apiHash: options.apiHash,
-        username: current?.username ?? username,
-        peerId: options.peerId ?? current?.peerId,
-        offsetId:
-          more && current?.lastBefore ? Number(current.lastBefore) : undefined,
+        username: channel?.username ?? username,
+        peerId: options.peerId ?? channel?.peerId,
+        offsetId: previousCursor ? Number(previousCursor) : undefined,
         limit: more ? 60 : 80,
       });
       session = synced.session;
       const result = synced.result;
-      state = applyAndSave((prev) =>
-        applySyncResult(prev, username, result, more),
-      );
+      const roundPatch = applySyncToSqlite(username, result, more);
+      patch = accumulatePatch(patch, roundPatch);
+      channel = roundPatch.channels?.[0] ?? readChannelRecord(username);
       const summary = summarizeSync(result);
       rounds += 1;
       posts += summary.posts;
@@ -179,7 +188,7 @@ export async function ingestAccountChannelToSqlite(options: {
       channelTitle = result.channel.title;
       if (
         !result.nextBefore ||
-        cursorDidNotAdvance(more, current?.lastBefore, result.nextBefore)
+        cursorDidNotAdvance(more, previousCursor, result.nextBefore)
       ) {
         exhausted = true;
         break;
@@ -188,7 +197,7 @@ export async function ingestAccountChannelToSqlite(options: {
       more = true;
     }
     return {
-      state,
+      patch,
       exhausted,
       rounds,
       posts,

@@ -12,7 +12,7 @@ import {
 } from "react";
 import { toast } from "sonner";
 import { recountChannel, sameChannel } from "@/lib/catalog";
-import { markChannelErrorInState } from "@/lib/catalog-apply";
+import { applyCatalogPatch } from "@/lib/catalog-patch";
 import {
   compactCatalog,
   deleteBrowserCatalog,
@@ -27,7 +27,13 @@ import { hasCloudOrMagnetLink } from "@/lib/labels";
 import { buildDemoCatalog } from "@/lib/demo-data";
 import { readAccountAuth, writeAccountAuth } from "@/lib/account-session";
 import { readStoredProxy } from "@/lib/local-proxy";
-import type { CatalogState, ChannelRecord, SyncResult, TitleRecord } from "@/lib/types";
+import type {
+  CatalogPatch,
+  CatalogState,
+  ChannelRecord,
+  SyncResult,
+  TitleRecord,
+} from "@/lib/types";
 
 const SERVER_SNAPSHOT: CatalogState = {
   version: 1,
@@ -70,6 +76,7 @@ type CatalogContextValue = {
 type SyncReport = {
   error?: string;
   code?: string;
+  patch?: CatalogPatch;
   state?: CatalogState;
   posts?: number;
   usable?: number;
@@ -203,6 +210,19 @@ function adoptServerState(state: CatalogState | undefined) {
   if (typeof window !== "undefined" && clientReady) {
     void deleteBrowserCatalog();
   }
+}
+
+function adoptServerPatch(patch: CatalogPatch | undefined) {
+  if (!patch) return;
+  adoptServerState(applyCatalogPatch(snapshot, patch));
+}
+
+function adoptServerResult(data: {
+  patch?: CatalogPatch;
+  state?: CatalogState;
+}) {
+  if (data.patch) adoptServerPatch(data.patch);
+  else if (data.state) adoptServerState(data.state);
 }
 
 function rememberChannelPlaceholder(
@@ -423,7 +443,7 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
           if (data.session && auth) {
             writeAccountAuth({ ...auth, session: data.session });
           }
-          if (data.state) adoptServerState(data.state);
+          adoptServerResult(data);
           if (!res.ok) {
             const err = new Error(data.error || "同步失败") as Error & {
               code?: string;
@@ -477,23 +497,16 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
             username,
             message,
           });
-          if (applied.state) {
-            adoptServerState(applied.state);
-            if (
-              local &&
-              !applied.state.channels.some((channel) =>
-                sameChannel(channel.username, username),
-              )
-            ) {
-              rememberChannelPlaceholder(username, {
-                ...local,
-                status: "error",
-                lastError: message,
-              });
-            }
-          } else {
-            snapshot = markChannelErrorInState(snapshot, username, message);
-            publish();
+          adoptServerResult(applied);
+          const after = snapshot.channels.find((channel) =>
+            sameChannel(channel.username, username),
+          );
+          if (after?.lastError !== message) {
+            rememberChannelPlaceholder(username, {
+              ...(after ?? local),
+              status: "error",
+              lastError: message,
+            });
           }
         }
         toast.error(message);
@@ -560,11 +573,11 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
         result,
         more,
       });
-      if (!applied.ok || !applied.state) {
+      if (!applied.ok || (!applied.patch && !applied.state)) {
         toast.error(applied.error || "写入片库失败");
         return false;
       }
-      adoptServerState(applied.state);
+      adoptServerResult(applied);
       const usable = result.titles.filter(hasCloudOrMagnetLink).length;
       const dropped = result.titles.length - usable;
       toast.success(
@@ -586,11 +599,11 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
 
   const importText = useCallback(async (text: string) => {
     const applied = await postCatalogApply({ type: "import", text });
-    if (!applied.ok || !applied.state) {
+    if (!applied.ok || (!applied.patch && !applied.state)) {
       toast.error(applied.error || "解析失败");
       return false;
     }
-    adoptServerState(applied.state);
+    adoptServerResult(applied);
     toast.success(`导入 ${applied.usable ?? 0} 部有网盘或磁力的影片`, {
       description:
         [
@@ -605,11 +618,11 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
 
   const removeChannel = useCallback(async (username: string) => {
     const applied = await postCatalogApply({ type: "remove", username });
-    if (!applied.ok || !applied.state) {
+    if (!applied.ok || (!applied.patch && !applied.state)) {
       toast.error(applied.error || "移除频道失败");
       return;
     }
-    adoptServerState(applied.state);
+    adoptServerResult(applied);
     setSelectedId(null);
     toast.success("已移除频道及相关片源");
   }, []);

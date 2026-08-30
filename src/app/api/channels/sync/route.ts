@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { ChannelFetchError } from "@/lib/telegram";
 import { ingestPublicChannelToSqlite } from "@/lib/catalog-ingest-server";
-import { readCatalogState } from "@/lib/catalog-db";
+import { markChannelErrorInSqlite } from "@/lib/catalog-db";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -37,15 +37,18 @@ export async function POST(request: NextRequest) {
     });
     return Response.json(report);
   } catch (error) {
-    const state = readCatalogState();
+    const patch = markChannelErrorInSqlite(
+      body.username ?? "",
+      error instanceof Error ? error.message : "同步失败",
+    );
     if (error instanceof ChannelFetchError) {
       return Response.json(
-        { error: error.message, code: error.code, state },
+        { error: error.message, code: error.code, patch },
         { status: error.status },
       );
     }
     return Response.json(
-      { error: "同步失败，请稍后重试。", state },
+      { error: "同步失败，请稍后重试。", patch },
       { status: 500 },
     );
   }

@@ -21,16 +21,20 @@ function preferText(a?: string, b?: string): string | undefined {
   return left || undefined;
 }
 
+export function titleResourceKey(title: TitleRecord): string {
+  return resourceKey({
+    title: title.title,
+    year: title.year,
+    type: title.type,
+    season: title.editions[0]?.season,
+  });
+}
+
 export function mergeTitles(existing: TitleRecord[]): TitleRecord[] {
   const map = new Map<string, TitleRecord>();
 
   for (const title of existing) {
-    const key = resourceKey({
-      title: title.title,
-      year: title.year,
-      type: title.type,
-      season: title.editions[0]?.season,
-    });
+    const key = titleResourceKey(title);
     const prev = map.get(key);
     if (!prev) {
       map.set(key, {

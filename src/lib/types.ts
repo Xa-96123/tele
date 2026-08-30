@@ -103,6 +103,15 @@ export type CatalogState = {
   titles: TitleRecord[];
 };
 
+export type CatalogPatch = {
+  initialized?: boolean;
+  noticeDismissed?: boolean;
+  channels?: ChannelRecord[];
+  titles?: TitleRecord[];
+  removedChannel?: string;
+  removedTitleIds?: string[];
+};
+
 export type SyncResult = {
   channel: ChannelInfo;
   posts: ChannelPost[];

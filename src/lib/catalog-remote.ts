@@ -1,5 +1,6 @@
 import { isCatalogState } from "@/lib/catalog-storage";
-import type { CatalogState } from "@/lib/types";
+import { isCatalogPatch } from "@/lib/catalog-patch";
+import type { CatalogPatch, CatalogState } from "@/lib/types";
 
 export async function fetchCatalogFromServer(): Promise<{
   ok: boolean;
@@ -23,6 +24,7 @@ export async function fetchCatalogFromServer(): Promise<{
 
 export async function postCatalogApply(body: unknown): Promise<{
   ok: boolean;
+  patch?: CatalogPatch;
   state?: CatalogState;
   error?: string;
   skipped?: number;
@@ -38,6 +40,7 @@ export async function postCatalogApply(body: unknown): Promise<{
     });
     const data = (await res.json().catch(() => ({}))) as {
       ok?: boolean;
+      patch?: unknown;
       state?: unknown;
       error?: string;
       skipped?: number;
@@ -48,15 +51,17 @@ export async function postCatalogApply(body: unknown): Promise<{
     if (!res.ok) {
       return { ok: false, error: data.error || "写入本机片库失败" };
     }
+    const extras = {
+      skipped: data.skipped,
+      posts: data.posts,
+      usable: data.usable,
+      dropped: data.dropped,
+    };
+    if (data.patch && isCatalogPatch(data.patch)) {
+      return { ok: true, patch: data.patch, ...extras };
+    }
     if (data.state && isCatalogState(data.state)) {
-      return {
-        ok: true,
-        state: data.state,
-        skipped: data.skipped,
-        posts: data.posts,
-        usable: data.usable,
-        dropped: data.dropped,
-      };
+      return { ok: true, state: data.state, ...extras };
     }
     return { ok: false, error: data.error || "片库返回不完整" };
   } catch (error) {

@@ -5,13 +5,16 @@ import path from "node:path";
 import test from "node:test";
 import {
   applyAndSave,
+  applyImportToSqlite,
+  applySyncToSqlite,
   catalogTableCounts,
   closeCatalogDb,
   emptyCatalogState,
   readCatalogState,
+  removeChannelFromSqlite,
   replaceCatalogState,
 } from "./catalog-db.ts";
-import type { CatalogState, Edition, TitleRecord } from "./types.ts";
+import type { CatalogState, Edition, SyncResult, TitleRecord } from "./types.ts";
 
 function tempDb() {
   const dir = mkdtempSync(path.join(tmpdir(), "yingqu-db-"));
@@ -148,6 +151,115 @@ test("applyAndSave reads, mutates, and writes sqlite tables", () => {
       editions: 1,
       links: 2,
     });
+  } finally {
+    closeCatalogDb(file);
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("applySyncToSqlite upserts without rewriting other titles", () => {
+  const { file, dir } = tempDb();
+  try {
+    replaceCatalogState(catalog, file);
+    const incoming: SyncResult = {
+      channel: { username: "other_chan", title: "其他频道", description: "" },
+      posts: [
+        {
+          channel: "other_chan",
+          messageId: 2,
+          postUrl: "https://t.me/other_chan/2",
+          text: "三体",
+          hrefs: [],
+        },
+      ],
+      titles: [
+        {
+          id: "t-threebody",
+          title: "三体",
+          type: "movie",
+          genres: [],
+          cast: [],
+          editions: [
+            {
+              id: "other_chan/2",
+              channel: "other_chan",
+              channelTitle: "其他频道",
+              messageId: 2,
+              postUrl: "https://t.me/other_chan/2",
+              links: [{ kind: "quark", url: "https://pan.quark.cn/s/three" }],
+              rawText: "三体",
+            },
+          ],
+          firstSeenAt: "2026-04-01T00:00:00.000Z",
+          lastSeenAt: "2026-04-01T00:00:00.000Z",
+        },
+      ],
+      skipped: 0,
+      nextBefore: "40",
+      fetchedPages: 1,
+    };
+    const patch = applySyncToSqlite("other_chan", incoming, false, file);
+    assert.equal(patch.titles?.length, 1);
+    assert.equal(patch.channels?.[0]?.username, "other_chan");
+    assert.equal(patch.channels?.[0]?.lastBefore, "40");
+
+    const counts = catalogTableCounts(file);
+    assert.equal(counts.channels, 2);
+    assert.equal(counts.titles, 2);
+    assert.equal(counts.editions, 2);
+    assert.equal(counts.links, 3);
+
+    const loaded = readCatalogState(file);
+    assert.equal(loaded.titles.some((item) => item.title === "沙丘2"), true);
+    assert.equal(loaded.titles.some((item) => item.title === "三体"), true);
+    assert.equal(loaded.channels.find((item) => item.username === "aliyun_4k")?.lastBefore, "80");
+
+    applySyncToSqlite("other_chan", incoming, false, file);
+    assert.deepEqual(catalogTableCounts(file), counts);
+  } finally {
+    closeCatalogDb(file);
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("removeChannelFromSqlite deletes one channel and keeps the rest", () => {
+  const { file, dir } = tempDb();
+  try {
+    replaceCatalogState(catalog, file);
+    applyImportToSqlite(
+      [
+        {
+          id: "imported-1",
+          title: "漫长的季节",
+          type: "series",
+          genres: [],
+          cast: [],
+          editions: [
+            {
+              id: "imported/1",
+              channel: "imported",
+              channelTitle: "手动导入",
+              messageId: 1,
+              postUrl: "https://t.me/imported/1",
+              links: [{ kind: "aliyun", url: "https://www.alipan.com/s/demo" }],
+              rawText: "漫长的季节",
+            },
+          ],
+          firstSeenAt: "2026-04-01T00:00:00.000Z",
+          lastSeenAt: "2026-04-01T00:00:00.000Z",
+        },
+      ],
+      1,
+      file,
+    );
+    assert.equal(catalogTableCounts(file).channels, 2);
+    const patch = removeChannelFromSqlite("imported", file);
+    assert.equal(patch.removedChannel, "imported");
+    assert.equal(patch.removedTitleIds?.length, 1);
+    const loaded = readCatalogState(file);
+    assert.equal(loaded.channels.length, 1);
+    assert.equal(loaded.channels[0]?.username, "aliyun_4k");
+    assert.equal(loaded.titles[0]?.title, "沙丘2");
   } finally {
     closeCatalogDb(file);
     rmSync(dir, { recursive: true, force: true });

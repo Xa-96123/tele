@@ -1,14 +1,14 @@
 import { NextRequest } from "next/server";
-import {
-  applyImport,
-  applySyncResult,
-  markChannelErrorInState,
-  removeChannelFromState,
-} from "@/lib/catalog-apply";
-import { applyAndSave } from "@/lib/catalog-db";
 import { isCatalogState } from "@/lib/catalog-storage";
 import { hasCloudOrMagnetLink } from "@/lib/labels";
 import { parsePlainPosts } from "@/lib/parser";
+import {
+  applyImportToSqlite,
+  applySyncToSqlite,
+  markChannelErrorInSqlite,
+  removeChannelFromSqlite,
+  replaceCatalogState,
+} from "@/lib/catalog-db";
 import type { CatalogState, SyncResult } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -34,10 +34,12 @@ export async function POST(request: NextRequest) {
       if (!body.result || !body.username) {
         return Response.json({ error: "缺少同步结果。" }, { status: 400 });
       }
-      const state = applyAndSave((current) =>
-        applySyncResult(current, body.username ?? "", body.result!, Boolean(body.more)),
+      const patch = applySyncToSqlite(
+        body.username,
+        body.result,
+        Boolean(body.more),
       );
-      return Response.json({ ok: true, state });
+      return Response.json({ ok: true, patch });
     }
 
     if (body.type === "import") {
@@ -50,12 +52,10 @@ export async function POST(request: NextRequest) {
       }
       const parsed = parsePlainPosts(text, "imported", "手动导入");
       const usable = parsed.titles.filter(hasCloudOrMagnetLink).length;
-      const state = applyAndSave((current) =>
-        applyImport(current, parsed.titles, parsed.posts),
-      );
+      const patch = applyImportToSqlite(parsed.titles, parsed.posts);
       return Response.json({
         ok: true,
-        state,
+        patch,
         skipped: parsed.skipped,
         posts: parsed.posts,
         usable,
@@ -67,24 +67,19 @@ export async function POST(request: NextRequest) {
       if (!body.username) {
         return Response.json({ error: "缺少频道。" }, { status: 400 });
       }
-      const state = applyAndSave((current) =>
-        removeChannelFromState(current, body.username ?? ""),
-      );
-      return Response.json({ ok: true, state });
+      const patch = removeChannelFromSqlite(body.username);
+      return Response.json({ ok: true, patch });
     }
 
     if (body.type === "channel-error") {
       if (!body.username) {
         return Response.json({ error: "缺少频道。" }, { status: 400 });
       }
-      const state = applyAndSave((current) =>
-        markChannelErrorInState(
-          current,
-          body.username ?? "",
-          body.message || "同步失败",
-        ),
+      const patch = markChannelErrorInSqlite(
+        body.username,
+        body.message || "同步失败",
       );
-      return Response.json({ ok: true, state });
+      return Response.json({ ok: true, patch });
     }
 
     if (body.type === "replace") {
@@ -92,8 +87,8 @@ export async function POST(request: NextRequest) {
         return Response.json({ error: "片库数据不完整。" }, { status: 400 });
       }
       const incoming = body.state as CatalogState;
-      const state = applyAndSave(() => incoming);
-      return Response.json({ ok: true, state });
+      replaceCatalogState({ ...incoming, initialized: true });
+      return Response.json({ ok: true, state: incoming });
     }
 
     return Response.json({ error: "未知的片库操作。" }, { status: 400 });
