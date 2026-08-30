@@ -1,6 +1,7 @@
 import {
   CLOUD_LINK_KINDS,
   cloudKindsInTitles,
+  collectMagnetLinks,
   groupCloudLinks,
   LINK_LABELS,
   titlePosterUrl,
@@ -15,12 +16,13 @@ export const SUMMARY_BASE_COLUMNS = [
 
 export function summaryColumns(titles: TitleRecord[]) {
   const kinds = cloudKindsInTitles(titles);
-  const linkColumns = (kinds.length ? kinds : [...CLOUD_LINK_KINDS]).map(
-    (kind) => ({
-      key: kind,
-      label: LINK_LABELS[kind],
-    }),
-  );
+  const linkColumns = kinds.map((kind) => ({
+    key: kind,
+    label: LINK_LABELS[kind],
+  }));
+  if (titles.some((title) => collectMagnetLinks(title).length > 0)) {
+    linkColumns.push({ key: "magnet", label: LINK_LABELS.magnet });
+  }
   return [...SUMMARY_BASE_COLUMNS, ...linkColumns];
 }
 
@@ -35,6 +37,9 @@ export function flattenSummary(title: TitleRecord): SummaryFlat {
   for (const kind of CLOUD_LINK_KINDS) {
     row[kind] = (grouped.get(kind) ?? []).map((link) => link.url).join("\n");
   }
+  row.magnet = collectMagnetLinks(title)
+    .map((link) => link.url)
+    .join("\n");
   return row;
 }
 

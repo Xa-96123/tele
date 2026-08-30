@@ -23,7 +23,9 @@ import { posterStyle } from "@/lib/format";
 import {
   cloudKindsInTitles,
   collectCloudLinks,
+  collectMagnetLinks,
   groupCloudLinks,
+  hasCloudOrMagnetLink,
   LINK_LABELS,
   titlePosterUrl,
   type CloudLinkKind,
@@ -38,6 +40,7 @@ function matchesQuery(title: TitleRecord, query: string): boolean {
       link.url,
       LINK_LABELS[link.kind] ?? link.kind,
     ]),
+    ...collectMagnetLinks(title).map((link) => link.url),
   ]
     .join(" ")
     .toLowerCase();
@@ -52,9 +55,15 @@ export function StatsView() {
   const [listingIds, setListingIds] = useState<string[]>([]);
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return state.titles.filter((title) => matchesQuery(title, q));
+    return state.titles.filter(
+      (title) => hasCloudOrMagnetLink(title) && matchesQuery(title, q),
+    );
   }, [query, state.titles]);
   const linkKinds = useMemo(() => cloudKindsInTitles(filtered), [filtered]);
+  const showMagnet = useMemo(
+    () => filtered.some((title) => collectMagnetLinks(title).length > 0),
+    [filtered],
+  );
   const visibleSelected = filtered.filter((title) => picked.has(title.id));
   const allVisibleSelected =
     filtered.length > 0 && visibleSelected.length === filtered.length;
@@ -123,7 +132,7 @@ export function StatsView() {
             汇总
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            勾选后可一键整理闲鱼上架文案。表格含海报、片名和分列网盘，不含简介。
+            只列出有网盘或磁力的影片。勾选后可上架闲鱼。表格含海报、片名和分列链接，不含简介。
           </p>
         </div>
         <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-center lg:w-auto">
@@ -181,8 +190,8 @@ export function StatsView() {
               </p>
               <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">
                 {state.titles.length === 0
-                  ? "到「频道」页添加 Telegram 频道或导入桌面导出，汇总会出现在这里。"
-                  : "试试清除关键词，或换一组片名、网盘链接。"}
+                  ? "到「频道」页添加 Telegram 频道或导入桌面导出。没有网盘或磁力的不会出现在这里。"
+                  : "试试清除关键词，或换一组片名、网盘或磁力链接。"}
               </p>
               {state.titles.length === 0 ? (
                 <Button className="mt-4" variant="secondary" onClick={loadDemo}>
@@ -194,6 +203,7 @@ export function StatsView() {
             <TitleTable
               titles={filtered}
               linkKinds={linkKinds}
+              showMagnet={showMagnet}
               picked={picked}
               allSelected={allVisibleSelected}
               onToggleAll={toggleAll}
@@ -226,6 +236,7 @@ export function StatsView() {
 function TitleTable({
   titles,
   linkKinds,
+  showMagnet,
   picked,
   allSelected,
   onToggleAll,
@@ -235,6 +246,7 @@ function TitleTable({
 }: {
   titles: TitleRecord[];
   linkKinds: CloudLinkKind[];
+  showMagnet: boolean;
   picked: Set<string>;
   allSelected: boolean;
   onToggleAll: (next: boolean) => void;
@@ -260,6 +272,9 @@ function TitleTable({
               {LINK_LABELS[kind]}
             </TableHead>
           ))}
+          {showMagnet ? (
+            <TableHead className="min-w-40">{LINK_LABELS.magnet}</TableHead>
+          ) : null}
           <TableHead className="w-28 pr-4 text-right">操作</TableHead>
         </TableRow>
       </TableHeader>
@@ -297,6 +312,11 @@ function TitleTable({
                   <CloudLinkCell links={grouped.get(kind) ?? []} />
                 </TableCell>
               ))}
+              {showMagnet ? (
+                <TableCell className="whitespace-normal">
+                  <CloudLinkCell links={collectMagnetLinks(title)} />
+                </TableCell>
+              ) : null}
               <TableCell
                 className="pr-4 text-right"
                 onClick={(event) => event.stopPropagation()}

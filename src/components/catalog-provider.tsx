@@ -11,6 +11,7 @@ import {
 } from "react";
 import { toast } from "sonner";
 import { mergeCatalog, recountChannel } from "@/lib/catalog";
+import { hasCloudOrMagnetLink } from "@/lib/labels";
 import { buildDemoCatalog } from "@/lib/demo-data";
 import { readAccountAuth, writeAccountAuth } from "@/lib/account-session";
 import { readStoredProxy } from "@/lib/local-proxy";
@@ -70,10 +71,20 @@ function readStore(): CatalogState {
     if (parsed.version !== 1 || !Array.isArray(parsed.titles)) {
       return emptyState();
     }
-    return parsed;
+    return pruneUnshareable(parsed);
   } catch {
     return emptyState();
   }
+}
+
+function pruneUnshareable(state: CatalogState): CatalogState {
+  const titles = state.titles.filter(hasCloudOrMagnetLink);
+  if (titles.length === state.titles.length) return state;
+  return {
+    ...state,
+    titles,
+    channels: state.channels.map((channel) => recountChannel(channel, titles)),
+  };
 }
 
 function persist(next: CatalogState, notify = true) {
@@ -102,6 +113,7 @@ function hydrateFromBrowser() {
       return;
     }
     snapshot = stored;
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
   } catch {
     snapshot = emptyState();
   }
@@ -256,13 +268,17 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
           }
         }
         applySync(data.channel.username, data, more);
+        const usable = data.titles.filter(hasCloudOrMagnetLink).length;
+        const dropped = data.titles.length - usable;
         toast.success(
-          `读到 ${data.posts.length} 条帖子，识别出 ${data.titles.length} 部影片`,
+          `读到 ${data.posts.length} 条帖子，识别出 ${usable} 部有网盘或磁力的影片`,
           {
-            description:
-              data.skipped > 0
-                ? `另有 ${data.skipped} 条不像影视资源，已跳过。`
-                : data.channel.title,
+            description: [
+              data.skipped > 0 ? `${data.skipped} 条不像影视资源` : "",
+              dropped > 0 ? `${dropped} 部没有网盘或磁力` : "",
+            ]
+              .filter(Boolean)
+              .join("，") || data.channel.title,
           },
         );
         return true;
@@ -338,13 +354,17 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
   const ingestSyncResult = useCallback(
     (result: SyncResult, more = false) => {
       applySync(result.channel.username, result, more);
+      const usable = result.titles.filter(hasCloudOrMagnetLink).length;
+      const dropped = result.titles.length - usable;
       toast.success(
-        `读到 ${result.posts.length} 条帖子，识别出 ${result.titles.length} 部影片`,
+        `读到 ${result.posts.length} 条帖子，识别出 ${usable} 部有网盘或磁力的影片`,
         {
-          description:
-            result.skipped > 0
-              ? `另有 ${result.skipped} 条不像影视资源，已跳过。`
-              : result.channel.title,
+          description: [
+            result.skipped > 0 ? `${result.skipped} 条不像影视资源` : "",
+            dropped > 0 ? `${dropped} 部没有网盘或磁力` : "",
+          ]
+            .filter(Boolean)
+            .join("，") || result.channel.title,
         },
       );
     },
@@ -367,7 +387,8 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
       toast.error(data.error || "解析失败");
       return false;
     }
-    const incoming = data.titles ?? [];
+    const incoming = (data.titles ?? []).filter(hasCloudOrMagnetLink);
+    const dropped = (data.titles ?? []).length - incoming.length;
     updateCatalog((prev) => {
       const titles = mergeCatalog(prev.titles, incoming);
       const imported =
@@ -391,11 +412,13 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
         : [...prev.channels, channel];
       return { ...prev, titles, channels };
     });
-    toast.success(`导入 ${incoming.length} 部影片`, {
-      description:
-        (data.skipped ?? 0) > 0
-          ? `跳过 ${data.skipped} 条无法识别的文本。`
-          : undefined,
+    toast.success(`导入 ${incoming.length} 部有网盘或磁力的影片`, {
+      description: [
+        (data.skipped ?? 0) > 0 ? `跳过 ${data.skipped} 条无法识别` : "",
+        dropped > 0 ? `${dropped} 部没有网盘或磁力` : "",
+      ]
+        .filter(Boolean)
+        .join("，") || undefined,
     });
     return true;
   }, []);

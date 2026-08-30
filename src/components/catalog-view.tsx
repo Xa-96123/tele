@@ -16,7 +16,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { uniqueLinkKinds, uniqueResolutions } from "@/lib/catalog";
-import { LINK_LABELS, QUALITY_OPTIONS, TYPE_LABELS } from "@/lib/labels";
+import { hasCloudOrMagnetLink, LINK_LABELS, QUALITY_OPTIONS, TYPE_LABELS } from "@/lib/labels";
 import type { TitleRecord } from "@/lib/types";
 
 type SortKey = "recent" | "year" | "title" | "douban";
@@ -44,6 +44,7 @@ export function CatalogView() {
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     const rows = state.titles.filter((title) => {
+      if (!hasCloudOrMagnetLink(title)) return false;
       if (type !== "all" && title.type !== type) return false;
       if (year !== "all" && String(title.year) !== year) return false;
       if (quality !== "all" && !uniqueResolutions(title).includes(quality)) {
@@ -95,7 +96,7 @@ export function CatalogView() {
             片库
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            已汇总 {state.titles.length} 部，当前显示 {filtered.length} 部
+            已汇总 {state.titles.filter(hasCloudOrMagnetLink).length} 部有网盘或磁力的影片，当前显示 {filtered.length} 部
           </p>
         </div>
         <div className="relative w-full md:max-w-sm">
@@ -274,7 +275,7 @@ function EmptyCatalog({ hasData }: { hasData: boolean }) {
       <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">
         {hasData
           ? "试试清除筛选，或换一组关键词。"
-          : "到「频道」页添加公开 Telegram 频道，或粘贴帖子原文导入。"}
+          : "到「频道」页添加公开 Telegram 频道，或粘贴帖子原文导入。没有网盘或磁力的帖子不会进入片库。"}
       </p>
     </div>
   );

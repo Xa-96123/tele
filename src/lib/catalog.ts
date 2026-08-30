@@ -1,3 +1,4 @@
+import { hasCloudOrMagnetLink } from "@/lib/labels";
 import type { ChannelRecord, TitleRecord } from "@/lib/types";
 import { resourceKey } from "@/lib/parser";
 
@@ -65,9 +66,9 @@ export function mergeTitles(existing: TitleRecord[]): TitleRecord[] {
     }
   }
 
-  return [...map.values()].sort((a, b) =>
-    b.lastSeenAt.localeCompare(a.lastSeenAt),
-  );
+  return [...map.values()]
+    .filter(hasCloudOrMagnetLink)
+    .sort((a, b) => b.lastSeenAt.localeCompare(a.lastSeenAt));
 }
 
 export function mergeCatalog(

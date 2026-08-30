@@ -42,6 +42,29 @@ export function isCloudLinkKind(kind: LinkKind): kind is CloudLinkKind {
   return (CLOUD_LINK_KINDS as readonly LinkKind[]).includes(kind);
 }
 
+export function isShareableLinkKind(kind: LinkKind): boolean {
+  return kind === "magnet" || isCloudLinkKind(kind);
+}
+
+export function hasCloudOrMagnetLink(title: TitleRecord): boolean {
+  return title.editions.some((edition) =>
+    edition.links.some((link) => isShareableLinkKind(link.kind)),
+  );
+}
+
+export function collectMagnetLinks(title: TitleRecord): SourceLink[] {
+  const seen = new Set<string>();
+  const links: SourceLink[] = [];
+  for (const edition of title.editions) {
+    for (const link of edition.links) {
+      if (link.kind !== "magnet" || seen.has(link.url)) continue;
+      seen.add(link.url);
+      links.push(link);
+    }
+  }
+  return links;
+}
+
 export function collectCloudLinks(title: TitleRecord): SourceLink[] {
   const seen = new Set<string>();
   const links: SourceLink[] = [];
