@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { mergeTitles, nextHistoryCursor, nextPostCount } from "./catalog.ts";
+import {
+  mergeTitles,
+  nextHistoryCursor,
+  nextPostCount,
+  sameChannel,
+} from "./catalog.ts";
 import { hasCloudOrMagnetLink } from "./labels.ts";
 import type { Edition, TitleRecord } from "./types.ts";
 
@@ -54,6 +59,12 @@ test("drops titles that only have telegram or no shareable links", () => {
   const merged = mergeTitles([telegram, empty, titleWithLinks("夸克", ["quark"])]);
   assert.equal(merged.length, 1);
   assert.equal(merged[0].title, "夸克");
+});
+
+test("sameChannel ignores case and surrounding spaces", () => {
+  assert.equal(sameChannel("Aliyun_4K_Movies", "aliyun_4k_movies"), true);
+  assert.equal(sameChannel(" demo ", "demo"), true);
+  assert.equal(sameChannel("a", "b"), false);
 });
 
 test("sync latest keeps the older history cursor for 往前翻", () => {

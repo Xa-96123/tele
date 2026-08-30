@@ -220,9 +220,9 @@ export function ChannelManager() {
                       channel.isDemo ||
                       channel.source === "export"
                     }
-                    onClick={() => syncOne(channel.username)}
+                    onClick={() => void syncOne(channel.username)}
                   >
-                    同步最新
+                    {channel.status === "error" ? "重试同步" : "同步最新"}
                   </Button>
                   <Button
                     variant="outline"
@@ -230,9 +230,10 @@ export function ChannelManager() {
                     disabled={
                       channel.status === "syncing" ||
                       channel.isDemo ||
+                      channel.source === "export" ||
                       !channel.lastBefore
                     }
-                    onClick={() => syncOne(channel.username, true)}
+                    onClick={() => void syncOne(channel.username, true)}
                   >
                     再往前翻
                   </Button>

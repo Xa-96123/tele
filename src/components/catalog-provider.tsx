@@ -15,6 +15,7 @@ import {
   nextHistoryCursor,
   nextPostCount,
   recountChannel,
+  sameChannel,
 } from "@/lib/catalog";
 import {
   clearBrowserCatalog,
@@ -70,12 +71,18 @@ type CatalogContextValue = {
 const CatalogContext = createContext<CatalogContextValue | null>(null);
 
 const listeners = new Set<() => void>();
+const syncingUsernames = new Set<string>();
 let snapshot: CatalogState = SERVER_SNAPSHOT;
+let published: CatalogState = SERVER_SNAPSHOT;
 let clientReady = false;
 let dirtyDuringHydrate = false;
 let persistFailedToastShown = false;
 let hydratePromise: Promise<void> | null = null;
 let persistChain: Promise<void> = Promise.resolve();
+
+function channelKey(username: string) {
+  return username.trim().toLowerCase();
+}
 
 function pruneUnshareable(state: CatalogState): CatalogState {
   const titles = state.titles.filter(hasCloudOrMagnetLink);
@@ -91,6 +98,49 @@ function notifyListeners() {
   listeners.forEach((listener) => listener());
 }
 
+function withLiveSyncStatus(state: CatalogState): CatalogState {
+  let changed = false;
+  const channels = state.channels.map((channel) => {
+    const live = syncingUsernames.has(channelKey(channel.username));
+    if (live && channel.status !== "syncing") {
+      changed = true;
+      return { ...channel, status: "syncing" as const };
+    }
+    if (!live && channel.status === "syncing") {
+      changed = true;
+      return { ...channel, status: "idle" as const };
+    }
+    return channel;
+  });
+  return changed ? { ...state, channels } : state;
+}
+
+function publish() {
+  published = withLiveSyncStatus(snapshot);
+  notifyListeners();
+}
+
+function markSyncing(username: string, next: boolean) {
+  const key = channelKey(username);
+  const has = syncingUsernames.has(key);
+  if (next) {
+    syncingUsernames.add(key);
+    snapshot = {
+      ...snapshot,
+      channels: snapshot.channels.map((channel) =>
+        sameChannel(channel.username, username)
+          ? { ...channel, lastError: undefined }
+          : channel,
+      ),
+    };
+  } else if (has) {
+    syncingUsernames.delete(key);
+  } else {
+    return;
+  }
+  publish();
+}
+
 function persist(next: CatalogState, notify = true) {
   try {
     const pruned = pruneUnshareable(next);
@@ -101,7 +151,7 @@ function persist(next: CatalogState, notify = true) {
   if (!clientReady) dirtyDuringHydrate = true;
   if (notify) {
     try {
-      notifyListeners();
+      publish();
     } catch {
       // listeners must not break persist
     }
@@ -199,7 +249,7 @@ function hydrateFromBrowser() {
       }
     } finally {
       clientReady = true;
-      notifyListeners();
+      publish();
       schedulePersist();
     }
   })();
@@ -214,7 +264,7 @@ function subscribe(listener: () => void) {
 }
 
 function getSnapshot() {
-  return snapshot;
+  return published;
 }
 
 function getServerSnapshot() {
@@ -242,10 +292,12 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
     (username: string, result: SyncResult, more: boolean) => {
       updateCatalog((prev) => {
         const titles = mergeCatalog(prev.titles, result.titles);
-        const existing = prev.channels.find((c) => c.username === username);
+        const existing = prev.channels.find((c) =>
+          sameChannel(c.username, username),
+        );
         const base: ChannelRecord = existing ?? {
           ...result.channel,
-          username: result.channel.username,
+          username: result.channel.username || username,
           addedAt: new Date().toISOString(),
           postCount: 0,
           resourceCount: 0,
@@ -270,11 +322,14 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
             incoming: result.posts.length,
           }),
         });
+        const storedUsername = existing?.username ?? result.channel.username ?? username;
         const channels = existing
           ? prev.channels.map((c) =>
-              c.username === username ? nextChannel : c,
+              sameChannel(c.username, username)
+                ? { ...nextChannel, username: storedUsername }
+                : c,
             )
-          : [...prev.channels, nextChannel];
+          : [...prev.channels, { ...nextChannel, username: storedUsername }];
         return { ...prev, titles, channels };
       });
     },
@@ -283,7 +338,9 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
 
   const syncOne = useCallback(
     async (username: string, more = false) => {
-      const current = snapshot.channels.find((c) => c.username === username);
+      const current = snapshot.channels.find((c) =>
+        sameChannel(c.username, username),
+      );
       if (current?.isDemo) {
         toast.message("演示频道没有线上帖子", {
           description: "请添加真实的公开频道，或重新载入演示片库。",
@@ -298,14 +355,7 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
         return false;
       }
 
-      updateCatalog((prev) => ({
-        ...prev,
-        channels: prev.channels.map((c) =>
-          c.username === username
-            ? { ...c, status: "syncing", lastError: undefined }
-            : c,
-        ),
-      }));
+      markSyncing(username, true);
 
       try {
         let data: SyncResult & { error?: string; code?: string };
@@ -362,7 +412,7 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
             throw err;
           }
         }
-        applySync(data.channel.username, data, more);
+        applySync(username, data, more);
         const usable = data.titles.filter(hasCloudOrMagnetLink).length;
         const dropped = data.titles.length - usable;
         toast.success(
@@ -383,7 +433,7 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
         updateCatalog((prev) => ({
           ...prev,
           channels: prev.channels.map((c) =>
-            c.username === username
+            sameChannel(c.username, username)
               ? { ...c, status: "error", lastError: message }
               : c,
           ),
@@ -400,6 +450,8 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
           );
         }
         return false;
+      } finally {
+        markSyncing(username, false);
       }
     },
     [applySync],
@@ -424,7 +476,7 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
             addedAt: new Date().toISOString(),
             postCount: 0,
             resourceCount: 0,
-            status: "syncing",
+            status: "idle",
           },
         ],
       }));
@@ -523,13 +575,15 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
       const titles = prev.titles
         .map((title) => ({
           ...title,
-          editions: title.editions.filter((e) => e.channel !== username),
+          editions: title.editions.filter(
+            (e) => !sameChannel(e.channel, username),
+          ),
         }))
         .filter((title) => title.editions.length > 0);
       return {
         ...prev,
         titles,
-        channels: prev.channels.filter((c) => c.username !== username),
+        channels: prev.channels.filter((c) => !sameChannel(c.username, username)),
       };
     });
     setSelectedId(null);

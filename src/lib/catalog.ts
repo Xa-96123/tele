@@ -189,6 +189,10 @@ export function uniqueResolutions(title: TitleRecord): string[] {
   ];
 }
 
+export function sameChannel(left: string, right: string) {
+  return left.trim().toLowerCase() === right.trim().toLowerCase();
+}
+
 export function nextHistoryCursor(options: {
   more: boolean;
   previous?: string;
