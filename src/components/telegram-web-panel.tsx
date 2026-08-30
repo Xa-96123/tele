@@ -18,6 +18,7 @@ import {
   channelInputError,
   parseChannelInput,
 } from "@/lib/channel";
+import { readStoredProxy } from "@/lib/local-proxy";
 
 export function TelegramWebPanel({
   onPastePosts,
@@ -41,7 +42,7 @@ export function TelegramWebPanel({
     const ok = await addAndSync(parsed.username);
     setAdding(false);
     if (ok) setValue("");
-    else onPastePosts();
+    else if (readStoredProxy()) onPastePosts();
   }
 
   return (
