@@ -97,7 +97,7 @@ export function recountChannel(
     ...channel,
     ...extras,
     resourceCount: related.length,
-    postCount: Math.max(channel.postCount, posts.size),
+    postCount: extras?.postCount ?? Math.max(channel.postCount, posts.size),
   };
 }
 

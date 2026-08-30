@@ -4,6 +4,7 @@ import {
   mergeTitles,
   nextHistoryCursor,
   nextPostCount,
+  recountChannel,
   sameChannel,
 } from "./catalog.ts";
 import { hasCloudOrMagnetLink } from "./labels.ts";
@@ -86,4 +87,22 @@ test("sync latest keeps the older history cursor for 往前翻", () => {
   );
   assert.equal(nextPostCount({ more: true, previous: 80, incoming: 24 }), 104);
   assert.equal(nextPostCount({ more: false, previous: 80, incoming: 24 }), 80);
+});
+
+test("recountChannel keeps explicit postCount from extras", () => {
+  const counted = recountChannel(
+    {
+      username: "demo",
+      title: "demo",
+      description: "",
+      addedAt: "2026-01-01T00:00:00.000Z",
+      postCount: 0,
+      resourceCount: 0,
+      status: "idle",
+    },
+    [titleWithLinks("夸克", ["quark"])],
+    { postCount: 3 },
+  );
+  assert.equal(counted.resourceCount, 1);
+  assert.equal(counted.postCount, 3);
 });
