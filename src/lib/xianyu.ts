@@ -32,7 +32,7 @@ export function buildXianyuTitle(title: TitleRecord): string {
 export function buildXianyuDescription(title: TitleRecord): string {
   const overview = title.overview?.replace(/\s+/g, " ").trim();
   const lines = [
-    `片名：${title.title}`,
+    title.title,
     title.year ? `年份：${title.year}` : "",
     title.originalTitle ? `原名：${title.originalTitle}` : "",
     "",

@@ -29,7 +29,8 @@ test("xianyu description uses overview and omits cloud links", () => {
   const dune = titles.find((title) => title.title.includes("沙丘"));
   assert.ok(dune);
   const description = buildXianyuDescription(dune);
-  assert.match(description, /片名：/);
+  assert.match(description, /^沙丘/);
+  assert.doesNotMatch(description, /片名：/);
   assert.match(description, /简介：/);
   assert.match(description, /保罗/);
   assert.doesNotMatch(description, /夸克|阿里云盘|pan\.quark|alipan|网盘：/);
