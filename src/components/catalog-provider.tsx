@@ -4,6 +4,7 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useState,
   useSyncExternalStore,
@@ -259,12 +260,11 @@ function hydrateFromBrowser() {
 
 function subscribe(listener: () => void) {
   listeners.add(listener);
-  void hydrateFromBrowser();
   return () => listeners.delete(listener);
 }
 
 function getSnapshot() {
-  return published;
+  return clientReady ? published : SERVER_SNAPSHOT;
 }
 
 function getServerSnapshot() {
@@ -287,6 +287,10 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
   const state = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
   const ready = useSyncExternalStore(subscribe, getClientReady, getServerReady);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  useEffect(() => {
+    void hydrateFromBrowser();
+  }, []);
 
   const applySync = useCallback(
     (username: string, result: SyncResult, more: boolean) => {
