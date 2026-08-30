@@ -215,6 +215,17 @@ export function nextPostCount(options: {
   return Math.max(options.previous, options.incoming);
 }
 
+export function historyFetchMore(options: {
+  untilEnd: boolean;
+  requestedMore: boolean;
+  lastBefore?: string;
+  passIndex: number;
+}): boolean {
+  if (!options.untilEnd) return options.requestedMore;
+  if (options.passIndex > 0) return true;
+  return Boolean(options.requestedMore || options.lastBefore);
+}
+
 export function uniqueLinkKinds(title: TitleRecord): string[] {
   return [
     ...new Set(title.editions.flatMap((e) => e.links.map((l) => l.kind))),

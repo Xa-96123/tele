@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  historyFetchMore,
   mergeTitles,
   nextHistoryCursor,
   nextPostCount,
@@ -87,6 +88,43 @@ test("sync latest keeps the older history cursor for 往前翻", () => {
   );
   assert.equal(nextPostCount({ more: true, previous: 80, incoming: 24 }), 104);
   assert.equal(nextPostCount({ more: false, previous: 80, incoming: 24 }), 80);
+});
+
+test("historyFetchMore continues from lastBefore when flipping to the end", () => {
+  assert.equal(
+    historyFetchMore({
+      untilEnd: false,
+      requestedMore: false,
+      lastBefore: "80",
+      passIndex: 0,
+    }),
+    false,
+  );
+  assert.equal(
+    historyFetchMore({
+      untilEnd: true,
+      requestedMore: false,
+      lastBefore: "80",
+      passIndex: 0,
+    }),
+    true,
+  );
+  assert.equal(
+    historyFetchMore({
+      untilEnd: true,
+      requestedMore: false,
+      passIndex: 0,
+    }),
+    false,
+  );
+  assert.equal(
+    historyFetchMore({
+      untilEnd: true,
+      requestedMore: false,
+      passIndex: 1,
+    }),
+    true,
+  );
 });
 
 test("recountChannel keeps explicit postCount from extras", () => {

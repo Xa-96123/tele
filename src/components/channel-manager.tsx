@@ -10,7 +10,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
-import { useCatalog } from "@/components/catalog-provider";
+import { useCatalog, type HistoryProgress } from "@/components/catalog-provider";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -42,6 +42,25 @@ import { AccountPanel } from "@/components/account-panel";
 import { ExportPanel } from "@/components/export-panel";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
+function channelProgressKey(username: string) {
+  return username.trim().toLowerCase();
+}
+
+function historyProgressLine(progress: HistoryProgress) {
+  if (progress.rounds === 0) {
+    return progress.untilEnd ? "正在翻更早的消息…" : "正在同步最新…";
+  }
+  return [
+    progress.untilEnd ? "翻历史中" : "同步中",
+    `第 ${progress.rounds} 轮`,
+    `已读 ${progress.posts} 条`,
+    `识别 ${progress.usable} 部`,
+    progress.exhausted ? "已到最早" : progress.canContinue ? "还可往前翻" : "",
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
+
 export function ChannelManager() {
   const {
     ready,
@@ -50,6 +69,7 @@ export function ChannelManager() {
     syncAll,
     importText,
     removeChannel,
+    historyProgress,
   } = useCatalog();
   const [importOpen, setImportOpen] = useState(false);
   const [importValue, setImportValue] = useState("");
@@ -96,7 +116,7 @@ export function ChannelManager() {
             频道
           </h1>
           <p className="mt-1 max-w-xl text-sm text-muted-foreground">
-            直接用 Telegram 网页版即可，不必创建应用程序。公开频道贴链接，私密频道复制帖子。同步结果写入本机 SQLite；「翻完历史」会按游标连续往前翻。
+            直接用 Telegram 网页版即可，不必创建应用程序。公开频道贴链接，私密频道复制帖子。「翻完历史」每一轮立刻写入，中断后再点会从当前游标继续。
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -149,7 +169,13 @@ export function ChannelManager() {
             </p>
           </div>
         ) : (
-          state.channels.map((channel) => (
+          state.channels.map((channel) => {
+            const progress =
+              historyProgress[channelProgressKey(channel.username)];
+            const pagingHistory = Boolean(
+              progress?.running && progress.untilEnd,
+            );
+            return (
             <Card key={channel.username} className="py-4">
               <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex min-w-0 items-start gap-3">
@@ -181,10 +207,12 @@ export function ChannelManager() {
                       {channel.isPrivate ? (
                         <Badge variant="outline">私密</Badge>
                       ) : null}
-                      {channel.status === "syncing" ? (
+                      {pagingHistory ? (
+                        <Badge>翻历史中</Badge>
+                      ) : channel.status === "syncing" ? (
                         <Badge>同步中</Badge>
                       ) : null}
-                      {channel.status === "error" ? (
+                      {channel.status === "error" && !pagingHistory ? (
                         <Badge variant="destructive">失败</Badge>
                       ) : null}
                     </div>
@@ -197,11 +225,13 @@ export function ChannelManager() {
                       {channel.lastSyncedAt
                         ? ` · ${formatRelativeTime(channel.lastSyncedAt)}同步`
                         : ""}
-                      {channel.lastBefore
-                        ? " · 还可往前翻"
-                        : channel.lastSyncedAt
-                          ? " · 已到最早"
-                          : ""}
+                      {progress?.running
+                        ? ` · ${historyProgressLine(progress)}`
+                        : channel.lastBefore
+                          ? " · 还可往前翻"
+                          : channel.lastSyncedAt
+                            ? " · 已到最早"
+                            : ""}
                       {channel.subscribers ? ` · ${channel.subscribers} 订阅` : ""}
                     </p>
                     {channel.lastError ? (
@@ -248,15 +278,15 @@ export function ChannelManager() {
                       channel.source === "export" ||
                       channel.username === "imported"
                     }
-                    title="从当前进度连续向更早的消息翻页，直到没有更早的消息或达到本轮上限"
+                    title="每一轮立刻写入片库。中断或超时后，再点同一按钮会从当前游标继续。"
                     onClick={() => void syncOne(channel.username, false, true)}
                   >
-                    {channel.status === "syncing" ? (
+                    {pagingHistory ? (
                       <Loader2 data-icon="inline-start" className="animate-spin" />
                     ) : (
                       <History data-icon="inline-start" />
                     )}
-                    翻完历史
+                    {pagingHistory ? "翻历史中" : "翻完历史"}
                   </Button>
                   <Button
                     variant="ghost"
@@ -269,7 +299,8 @@ export function ChannelManager() {
                 </div>
               </CardContent>
             </Card>
-          ))
+            );
+          })
         )}
       </div>
 

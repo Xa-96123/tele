@@ -11,7 +11,7 @@ import {
   type ReactNode,
 } from "react";
 import { toast } from "sonner";
-import { recountChannel, sameChannel } from "@/lib/catalog";
+import { historyFetchMore, recountChannel, sameChannel } from "@/lib/catalog";
 import { applyCatalogPatch } from "@/lib/catalog-patch";
 import {
   compactCatalog,
@@ -50,9 +50,22 @@ const emptyState = (): CatalogState => ({
   titles: [],
 });
 
+export type HistoryProgress = {
+  running: boolean;
+  untilEnd: boolean;
+  rounds: number;
+  posts: number;
+  usable: number;
+  skipped: number;
+  dropped: number;
+  exhausted: boolean;
+  canContinue: boolean;
+};
+
 type CatalogContextValue = {
   ready: boolean;
   state: CatalogState;
+  historyProgress: Record<string, HistoryProgress>;
   selectedId: string | null;
   setSelectedId: (id: string | null) => void;
   selectedTitle: TitleRecord | null;
@@ -90,6 +103,8 @@ const CatalogContext = createContext<CatalogContextValue | null>(null);
 
 const listeners = new Set<() => void>();
 const syncingUsernames = new Set<string>();
+const EMPTY_PROGRESS: Record<string, HistoryProgress> = {};
+let publishedProgress: Record<string, HistoryProgress> = EMPTY_PROGRESS;
 let snapshot: CatalogState = SERVER_SNAPSHOT;
 let published: CatalogState = SERVER_SNAPSHOT;
 let clientReady = false;
@@ -136,6 +151,23 @@ function withLiveSyncStatus(state: CatalogState): CatalogState {
 function publish() {
   published = withLiveSyncStatus(snapshot);
   notifyListeners();
+}
+
+function setHistoryProgress(username: string, next: HistoryProgress | null) {
+  const key = channelKey(username);
+  const copy = { ...publishedProgress };
+  if (next) copy[key] = next;
+  else delete copy[key];
+  publishedProgress = copy;
+  publish();
+}
+
+function getProgressSnapshot() {
+  return publishedProgress;
+}
+
+function getServerProgress() {
+  return EMPTY_PROGRESS;
 }
 
 function markSyncing(username: string, next: boolean) {
@@ -342,6 +374,11 @@ function updateCatalog(updater: (prev: CatalogState) => CatalogState) {
 export function CatalogProvider({ children }: { children: ReactNode }) {
   const state = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
   const ready = useSyncExternalStore(subscribe, getClientReady, getServerReady);
+  const historyProgress = useSyncExternalStore(
+    subscribe,
+    getProgressSnapshot,
+    getServerProgress,
+  );
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -376,19 +413,44 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
 
       markSyncing(username, true);
 
+      const HISTORY_MAX_ROUNDS = 20;
+      let posts = 0;
+      let usable = 0;
+      let skipped = 0;
+      let dropped = 0;
+      let exhausted = false;
+      let nextBefore: string | undefined;
+      let channelTitle: string | undefined;
+      let rounds = 0;
+
+      const reportProgress = (running: boolean) => {
+        setHistoryProgress(username, {
+          running,
+          untilEnd,
+          rounds,
+          posts,
+          usable,
+          skipped,
+          dropped,
+          exhausted,
+          canContinue: Boolean(nextBefore) && !exhausted,
+        });
+      };
+
       try {
-        let passMore = more;
-        let posts = 0;
-        let usable = 0;
-        let skipped = 0;
-        let dropped = 0;
-        let exhausted = false;
-        let nextBefore: string | undefined;
-        let channelTitle: string | undefined;
-        let rounds = 0;
-        const maxPasses = untilEnd ? 4 : 1;
+        const maxPasses = untilEnd ? HISTORY_MAX_ROUNDS : 1;
+        reportProgress(true);
 
         for (let pass = 0; pass < maxPasses; pass += 1) {
+          const passMore = historyFetchMore({
+            untilEnd,
+            requestedMore: more,
+            lastBefore:
+              snapshot.channels.find((channel) =>
+                sameChannel(channel.username, username),
+              )?.lastBefore ?? current?.lastBefore,
+            passIndex: pass,
+          });
           const live = snapshot.channels.find((channel) =>
             sameChannel(channel.username, username),
           );
@@ -413,14 +475,14 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
                     username: live?.username ?? username,
                     peerId: live?.peerId,
                     more: passMore,
-                    untilEnd,
-                    maxRounds: untilEnd ? 6 : 1,
+                    untilEnd: false,
+                    maxRounds: 1,
                   }
                 : {
                     username,
                     more: passMore,
-                    untilEnd,
-                    maxRounds: untilEnd ? 6 : 1,
+                    untilEnd: false,
+                    maxRounds: 1,
                     proxy: readStoredProxy() || undefined,
                   },
             ),
@@ -446,8 +508,8 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
           exhausted = data.exhausted ?? !data.nextBefore;
           nextBefore = data.nextBefore;
           channelTitle = data.channelTitle ?? channelTitle;
+          reportProgress(true);
           if (!untilEnd || exhausted || !nextBefore) break;
-          passMore = true;
         }
 
         toast.success(
@@ -460,7 +522,7 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
                 ? exhausted
                   ? "已翻到最早的消息"
                   : nextBefore
-                    ? `已连续 ${rounds} 轮，还可往前翻`
+                    ? `已连续 ${rounds} 轮，还可往前翻。再点「翻完历史」继续。`
                     : ""
                 : "",
               !untilEnd && nextBefore ? "还可往前翻" : "",
@@ -495,7 +557,12 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
             });
           }
         }
-        toast.error(message);
+        toast.error(message, {
+          description:
+            untilEnd && rounds > 0
+              ? `已写入 ${rounds} 轮、识别 ${usable} 部。再点「翻完历史」从当前游标继续。`
+              : undefined,
+        });
         if (
           typeof window !== "undefined" &&
           ((error as { code?: string }).code === "preview_blocked" ||
@@ -508,6 +575,7 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
         }
         return false;
       } finally {
+        setHistoryProgress(username, null);
         markSyncing(username, false);
       }
     },
@@ -626,6 +694,7 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
     () => ({
       ready,
       state,
+      historyProgress,
       selectedId,
       setSelectedId,
       selectedTitle,
@@ -641,6 +710,7 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
     [
       ready,
       state,
+      historyProgress,
       selectedId,
       selectedTitle,
       addAndSync,
