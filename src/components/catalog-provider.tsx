@@ -24,7 +24,6 @@ import {
   putCatalogToServer,
 } from "@/lib/catalog-remote";
 import { hasCloudOrMagnetLink } from "@/lib/labels";
-import { buildDemoCatalog } from "@/lib/demo-data";
 import { readAccountAuth, writeAccountAuth } from "@/lib/account-session";
 import { readStoredProxy } from "@/lib/local-proxy";
 import type {
@@ -68,8 +67,6 @@ type CatalogContextValue = {
   importText: (text: string) => Promise<boolean>;
   ingestSyncResult: (result: SyncResult, more?: boolean) => Promise<boolean>;
   removeChannel: (username: string) => Promise<void>;
-  loadDemo: () => void;
-  clearAll: () => void;
   dismissNotice: () => void;
 };
 
@@ -266,17 +263,6 @@ function rememberChannelPlaceholder(
   publish();
 }
 
-function demoState(): CatalogState {
-  const demo = buildDemoCatalog();
-  return {
-    version: 1,
-    initialized: true,
-    noticeDismissed: false,
-    channels: demo.channels,
-    titles: demo.titles,
-  };
-}
-
 function hydrateFromBrowser() {
   if (typeof window === "undefined") return hydratePromise;
   if (hydratePromise) return hydratePromise;
@@ -297,7 +283,7 @@ function hydrateFromBrowser() {
         snapshot =
           browser.status === "ready"
             ? pruneUnshareable(browser.state)
-            : demoState();
+            : { ...emptyState(), initialized: true };
         writeSqlite = true;
       }
     } catch {
@@ -309,12 +295,12 @@ function hydrateFromBrowser() {
         } else if (loaded.status === "ready") {
           snapshot = pruneUnshareable(loaded.state);
         } else {
-          snapshot = demoState();
+          snapshot = { ...emptyState(), initialized: true };
         }
         toast.error("读不到本机 SQLite，正在把浏览器里的旧片库迁过去。");
       } catch {
         if (!snapshot.initialized) {
-          snapshot = emptyState();
+          snapshot = { ...emptyState(), initialized: true };
         }
       }
     } finally {
@@ -369,7 +355,7 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
       );
       if (current?.isDemo) {
         toast.message("演示频道没有线上帖子", {
-          description: "请添加真实的公开频道，或重新载入演示片库。",
+          description: "请添加真实的公开频道。",
         });
         return false;
       }
@@ -627,29 +613,6 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
     toast.success("已移除频道及相关片源");
   }, []);
 
-  const loadDemo = useCallback(() => {
-    const demo = buildDemoCatalog();
-    updateCatalog((prev) => ({
-      ...prev,
-      initialized: true,
-      channels: demo.channels,
-      titles: demo.titles,
-    }));
-    toast.success("已载入演示片库");
-  }, []);
-
-  const clearAll = useCallback(() => {
-    persist({
-      version: 1,
-      initialized: true,
-      noticeDismissed: true,
-      channels: [],
-      titles: [],
-    });
-    setSelectedId(null);
-    toast.success("片库已清空");
-  }, []);
-
   const dismissNotice = useCallback(() => {
     updateCatalog((prev) => ({ ...prev, noticeDismissed: true }));
   }, []);
@@ -673,8 +636,6 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
       importText,
       ingestSyncResult,
       removeChannel,
-      loadDemo,
-      clearAll,
       dismissNotice,
     }),
     [
@@ -689,8 +650,6 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
       importText,
       ingestSyncResult,
       removeChannel,
-      loadDemo,
-      clearAll,
       dismissNotice,
     ],
   );

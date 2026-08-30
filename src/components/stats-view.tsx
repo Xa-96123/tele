@@ -48,7 +48,7 @@ function matchesQuery(title: TitleRecord, query: string): boolean {
 }
 
 export function StatsView() {
-  const { ready, state, selectedId, setSelectedId, selectedTitle, loadDemo } =
+  const { ready, state, selectedId, setSelectedId, selectedTitle } =
     useCatalog();
   const [query, setQuery] = useState("");
   const [picked, setPicked] = useState<Set<string>>(() => new Set());
@@ -193,11 +193,6 @@ export function StatsView() {
                   ? "到「频道」页添加 Telegram 频道或导入桌面导出。没有网盘或磁力的不会出现在这里。"
                   : "试试清除关键词，或换一组片名、网盘或磁力链接。"}
               </p>
-              {state.titles.length === 0 ? (
-                <Button className="mt-4" variant="secondary" onClick={loadDemo}>
-                  载入演示片库
-                </Button>
-              ) : null}
             </div>
           ) : (
             <TitleTable

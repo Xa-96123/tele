@@ -50,8 +50,6 @@ export function ChannelManager() {
     syncAll,
     importText,
     removeChannel,
-    loadDemo,
-    clearAll,
   } = useCatalog();
   const [importOpen, setImportOpen] = useState(false);
   const [importValue, setImportValue] = useState("");
@@ -147,11 +145,8 @@ export function ChannelManager() {
           <div className="rounded-xl border border-dashed px-6 py-14 text-center">
             <p className="font-heading text-lg">还没有频道</p>
             <p className="mt-2 text-sm text-muted-foreground">
-              用 Telegram 网页版贴频道链接，或载入演示片库看看效果。
+              用 Telegram 网页版贴频道链接，或粘贴帖子导入。
             </p>
-            <Button className="mt-4" variant="secondary" onClick={loadDemo}>
-              载入演示片库
-            </Button>
           </div>
         ) : (
           state.channels.map((channel) => (
@@ -338,12 +333,6 @@ export function ChannelManager() {
           >
             <Download data-icon="inline-start" />
             导出 Excel
-          </Button>
-          <Button variant="secondary" onClick={loadDemo}>
-            重置为演示
-          </Button>
-          <Button variant="destructive" onClick={clearAll}>
-            清空片库
           </Button>
         </CardContent>
       </Card>
