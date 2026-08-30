@@ -27,8 +27,10 @@ type Config = { hasServerCredentials: boolean };
 
 export function AccountPanel({
   onUseExport,
+  onUseWeb,
 }: {
   onUseExport?: () => void;
+  onUseWeb?: () => void;
 }) {
   const { ingestSyncResult } = useCatalog();
   const [config, setConfig] = useState<Config>({ hasServerCredentials: false });
@@ -301,7 +303,7 @@ export function AccountPanel({
               <li>把手机号填成 Mac Telegram 使用的号码（含 +86 区号）。</li>
               <li>点发送验证码，回到 Telegram 桌面版复制数字。</li>
             </ol>
-            <ApiAppHelp onUseExport={onUseExport} />
+            <ApiAppHelp onUseExport={onUseExport} onUseWeb={onUseWeb} />
             {!config.hasServerCredentials ? (
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="space-y-1.5">
@@ -472,7 +474,13 @@ export function AccountPanel({
   );
 }
 
-function ApiAppHelp({ onUseExport }: { onUseExport?: () => void }) {
+function ApiAppHelp({
+  onUseExport,
+  onUseWeb,
+}: {
+  onUseExport?: () => void;
+  onUseWeb?: () => void;
+}) {
   return (
     <div className="space-y-3 rounded-xl border border-amber-500/25 bg-amber-500/8 p-3 text-sm">
       <p className="font-medium text-foreground">
@@ -507,13 +515,20 @@ function ApiAppHelp({ onUseExport }: { onUseExport?: () => void }) {
         </li>
       </ul>
       <p className="text-muted-foreground">
-        试不通就改用桌面导出：Mac 上的 Telegram 自己就能导出频道记录，不需要 api_id。
+        试不通就改用网页版或桌面导出，都不需要 api_id。
       </p>
-      {onUseExport ? (
-        <Button variant="secondary" onClick={onUseExport}>
-          改用桌面导出（不需要创建应用）
-        </Button>
-      ) : null}
+      <div className="flex flex-wrap gap-2">
+        {onUseWeb ? (
+          <Button variant="secondary" onClick={onUseWeb}>
+            改用网页版
+          </Button>
+        ) : null}
+        {onUseExport ? (
+          <Button variant="outline" onClick={onUseExport}>
+            改用桌面导出
+          </Button>
+        ) : null}
+      </div>
     </div>
   );
 }

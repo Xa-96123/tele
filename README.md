@@ -2,16 +2,16 @@
 
 从 Telegram 电影频道提取影视资源信息，去重后汇总成可搜索片库。
 
-不一定要在 my.telegram.org 创建应用程序。Mac 上已经登录 Telegram 时，优先用桌面版官方导出的 `result.json`；公开频道也可以直接填用户名。账号授权是可选项，验证码会出现在桌面版官方账号对话里。
+影渠是浏览器里用的 Web 应用。推荐直接打开 [Telegram 网页版](https://web.telegram.org/k/)，把公开频道链接贴进「频道 → 网页版」，或把帖子复制进来。不必在 my.telegram.org 创建应用程序。也可以导入桌面版 `result.json`，或用账号授权。
 
 本工具只做索引与汇总，不下载、不托管视频文件。请只处理你有权查看的频道，并遵守当地法律与版权规定。
 
 ## 能做什么
 
-- 用已登录的 Telegram 账号读取你加入的频道（含无私密预览的频道）
+- 用 Telegram 网页版（web.telegram.org）汇总：贴公开频道链接，或复制帖子
 - 导入 Telegram 桌面版 JSON/HTML 导出
+- 用已登录账号读取加入过的频道（可选，需要自己的 api_id）
 - 添加公开频道用户名，抓取 t.me/s 网页预览
-- 粘贴频道帖子原文
 - 按类型、年份、画质、来源、频道筛选
 - 同一部影片的多频道版本合并到一张卡片
 - 汇总页用表格列出全部影片字段，支持搜索
@@ -48,11 +48,7 @@ npm run build
 
 [my.telegram.org/apps](https://my.telegram.org/apps) 点「Create application」报 ERROR、空白或没反应很常见。影渠**不依赖**这一步。
 
-1. Mac Telegram → 设置 → 高级 → 导出 Telegram 数据
-2. 格式选 JSON，只勾选电影频道
-3. 把每个频道目录中的 `result.json` 拖进「频道 → 桌面导出」
-
-若仍想用账号登录，先打开 `/apps` 看是否已经有 api_id（每个账号通常只能有一个应用）。新建时：名称用英文、短名称只要字母数字、平台选 Desktop、关掉翻译插件和 VPN 再试。
+优先用 Telegram 网页版：打开 [web.telegram.org](https://web.telegram.org/k/)，把公开频道链接贴进「频道 → 网页版」，或把帖子复制进来。也可以继续用桌面导出。
 
 ### 可选：把 API 凭证写进环境变量
 
@@ -64,7 +60,14 @@ npm run build
 
 ## 使用说明（Mac 已登录 Telegram）
 
-**推荐：桌面导出（不需要创建应用）**
+**推荐：Telegram 网页版（不需要创建应用）**
+
+1. 浏览器打开 [web.telegram.org](https://web.telegram.org/k/)，用同一个手机号登录
+2. 打开影渠「频道」→「网页版」
+3. 公开频道：把地址栏 `web.telegram.org/k/#@频道名` 贴进去，点提取
+4. 没有公开预览：在网页版选中影片帖子复制，再点「从网页版粘贴帖子」
+
+**也可以：桌面导出**
 
 1. 打开影渠「频道」→「桌面导出」
 2. Mac Telegram → 设置 → 高级 → 导出 Telegram 数据

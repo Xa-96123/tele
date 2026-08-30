@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { normalizeChannelUsername } from "./channel.ts";
+import { normalizeChannelUsername, parseChannelInput } from "./channel.ts";
 import {
   classifyLink,
   extractLinks,
@@ -30,7 +30,24 @@ test("normalize telegram usernames", () => {
     "Movie_Hub",
   );
   assert.equal(normalizeChannelUsername("https://t.me/Movie_Hub"), "Movie_Hub");
+  assert.equal(
+    normalizeChannelUsername("https://web.telegram.org/k/#@Movie_Hub"),
+    "Movie_Hub",
+  );
+  assert.equal(
+    normalizeChannelUsername("https://web.telegram.org/a/#@cine_4k"),
+    "cine_4k",
+  );
+  assert.equal(normalizeChannelUsername("tg://resolve?domain=Movie_Hub"), "Movie_Hub");
   assert.equal(normalizeChannelUsername("ab"), null);
+  assert.deepEqual(parseChannelInput("https://web.telegram.org/k/#-100123"), {
+    ok: false,
+    reason: "private_web",
+  });
+  assert.deepEqual(parseChannelInput("https://t.me/c/1234567890/8"), {
+    ok: false,
+    reason: "private_web",
+  });
 });
 
 test("parses book-title movie posts", () => {
