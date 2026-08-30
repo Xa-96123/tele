@@ -38,9 +38,9 @@ test("xianyu description uses overview and omits cloud links", () => {
   assert.equal(draft.price, "12");
   assert.ok(draft.posterUrl);
   const clip = formatXianyuClipboard(draft);
-  assert.match(clip, /标题：/);
-  assert.match(clip, /价格：12/);
+  assert.equal(clip, draft.description);
   assert.match(clip, /简介：/);
+  assert.doesNotMatch(clip, /标题：|价格：12/);
   assert.doesNotMatch(clip, /pan\./);
 
   const batch = formatXianyuBatchText([draft]);

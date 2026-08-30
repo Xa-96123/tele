@@ -56,9 +56,7 @@ export function buildXianyuDraft(
 }
 
 export function formatXianyuClipboard(draft: XianyuDraft): string {
-  return [`标题：${draft.listingTitle}`, `价格：${draft.price}`, "", draft.description].join(
-    "\n",
-  );
+  return draft.description;
 }
 
 export function formatXianyuBatchText(drafts: XianyuDraft[]): string {

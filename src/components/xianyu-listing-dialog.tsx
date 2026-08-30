@@ -114,7 +114,7 @@ export function XianyuListingDialog({
   async function publishCurrent() {
     if (!current || !draft) return;
     writeStoredXianyuPrice(price);
-    await copyText(formatXianyuClipboard(draft), "标题和描述");
+    await copyText(formatXianyuClipboard(draft), "描述");
     if (draft.posterUrl) {
       try {
         await downloadPoster(draft.posterUrl, current.title);
@@ -124,7 +124,7 @@ export function XianyuListingDialog({
     }
     window.open(XIANYU_PUBLISH_URL, "_blank", "noopener,noreferrer");
     toast.message("已打开闲鱼发布页", {
-      description: "把复制的标题、价格、简介贴进去，再上传刚下载的海报。",
+      description: "描述已复制。标题和价格请单独填写或点「复制标题」。再上传海报。",
     });
     if (index < titles.length - 1) setIndex((value) => value + 1);
   }
