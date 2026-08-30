@@ -245,15 +245,23 @@ function FilterSelect({
   items: Array<{ value: string; label: string }>;
   label: string;
 }) {
+  const selectedLabel =
+    items.find((item) => item.value === value)?.label ?? label;
+
   return (
     <Select
       value={value}
+      items={items}
       onValueChange={(next) => {
-        if (next) onChange(next);
+        if (typeof next === "string") onChange(next);
       }}
     >
       <SelectTrigger size="sm" className="min-w-28" aria-label={label}>
-        <SelectValue />
+        <SelectValue placeholder={label}>
+          {(selected: string | null) =>
+            items.find((item) => item.value === selected)?.label ?? selectedLabel
+          }
+        </SelectValue>
       </SelectTrigger>
       <SelectContent alignItemWithTrigger={false}>
         {items.map((item) => (
