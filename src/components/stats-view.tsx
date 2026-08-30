@@ -1,12 +1,14 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { FileSpreadsheet, Search } from "lucide-react";
+import { FileSpreadsheet, Search, Store } from "lucide-react";
 import { toast } from "sonner";
 import { useCatalog } from "@/components/catalog-provider";
 import { ResourceDetail } from "@/components/resource-detail";
+import { XianyuListingDialog } from "@/components/xianyu-listing-dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import {
   Table,
@@ -46,25 +48,68 @@ export function StatsView() {
   const { ready, state, selectedId, setSelectedId, selectedTitle, loadDemo } =
     useCatalog();
   const [query, setQuery] = useState("");
+  const [picked, setPicked] = useState<Set<string>>(() => new Set());
+  const [listingIds, setListingIds] = useState<string[]>([]);
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return state.titles.filter((title) => matchesQuery(title, q));
   }, [query, state.titles]);
   const linkKinds = useMemo(() => cloudKindsInTitles(filtered), [filtered]);
+  const visibleSelected = filtered.filter((title) => picked.has(title.id));
+  const allVisibleSelected =
+    filtered.length > 0 && visibleSelected.length === filtered.length;
+  const listingTitles = useMemo(
+    () =>
+      listingIds
+        .map((id) => state.titles.find((title) => title.id === id))
+        .filter((title): title is TitleRecord => Boolean(title)),
+    [listingIds, state.titles],
+  );
 
   if (!ready) {
     return <div className="h-40 rounded-xl bg-muted" />;
   }
 
+  function toggleOne(id: string, next: boolean) {
+    setPicked((current) => {
+      const copy = new Set(current);
+      if (next) copy.add(id);
+      else copy.delete(id);
+      return copy;
+    });
+  }
+
+  function toggleAll(next: boolean) {
+    setPicked((current) => {
+      const copy = new Set(current);
+      for (const title of filtered) {
+        if (next) copy.add(title.id);
+        else copy.delete(title.id);
+      }
+      return copy;
+    });
+  }
+
+  function openListing(ids: string[]) {
+    if (ids.length === 0) {
+      toast.error("请先勾选要上架的影片");
+      return;
+    }
+    setListingIds(ids);
+  }
+
   async function exportExcel() {
-    if (filtered.length === 0) {
+    const rows = visibleSelected.length > 0 ? visibleSelected : filtered;
+    if (rows.length === 0) {
       toast.error("没有可导出的影片");
       return;
     }
     try {
       const { downloadSummaryExcel } = await import("@/lib/export-xlsx");
-      downloadSummaryExcel(filtered, catalogExcelFilename(filtered.length));
-      toast.success(`已导出 ${filtered.length} 部影片（海报、片名、分列网盘）`);
+      downloadSummaryExcel(rows, catalogExcelFilename(rows.length));
+      toast.success(
+        `已导出 ${rows.length} 部影片${visibleSelected.length > 0 ? "（已选）" : ""}`,
+      );
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "导出失败");
     }
@@ -78,7 +123,7 @@ export function StatsView() {
             汇总
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            列出海报、片名，以及按网盘类型分开的链接。不含简介。
+            勾选后可一键整理闲鱼上架文案。表格含海报、片名和分列网盘，不含简介。
           </p>
         </div>
         <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-center lg:w-auto">
@@ -92,9 +137,24 @@ export function StatsView() {
               aria-label="搜索汇总列表"
             />
           </div>
-          <Button onClick={exportExcel} disabled={filtered.length === 0}>
+          <Button
+            onClick={() => openListing(visibleSelected.map((title) => title.id))}
+            disabled={visibleSelected.length === 0}
+          >
+            <Store data-icon="inline-start" />
+            一键上架闲鱼
+            {visibleSelected.length > 0 ? `（${visibleSelected.length}）` : ""}
+          </Button>
+          <Button
+            variant="outline"
+            onClick={exportExcel}
+            disabled={filtered.length === 0}
+          >
             <FileSpreadsheet data-icon="inline-start" />
-            导出 Excel（{filtered.length} 部）
+            导出 Excel
+            {visibleSelected.length > 0
+              ? `（${visibleSelected.length}）`
+              : `（${filtered.length}）`}
           </Button>
         </div>
       </div>
@@ -105,6 +165,9 @@ export function StatsView() {
             影片列表
             <span className="ml-2 text-sm font-normal text-muted-foreground">
               当前 {filtered.length} / {state.titles.length} 部
+              {visibleSelected.length > 0
+                ? `，已选 ${visibleSelected.length} 部`
+                : ""}
             </span>
           </CardTitle>
         </CardHeader>
@@ -131,7 +194,12 @@ export function StatsView() {
             <TitleTable
               titles={filtered}
               linkKinds={linkKinds}
+              picked={picked}
+              allSelected={allVisibleSelected}
+              onToggleAll={toggleAll}
+              onToggleOne={toggleOne}
               onOpen={(id) => setSelectedId(id)}
+              onList={(id) => openListing([id])}
             />
           )}
         </CardContent>
@@ -144,6 +212,13 @@ export function StatsView() {
           if (!open) setSelectedId(null);
         }}
       />
+      <XianyuListingDialog
+        titles={listingTitles}
+        open={listingTitles.length > 0}
+        onOpenChange={(open) => {
+          if (!open) setListingIds([]);
+        }}
+      />
     </div>
   );
 }
@@ -151,48 +226,91 @@ export function StatsView() {
 function TitleTable({
   titles,
   linkKinds,
+  picked,
+  allSelected,
+  onToggleAll,
+  onToggleOne,
   onOpen,
+  onList,
 }: {
   titles: TitleRecord[];
   linkKinds: CloudLinkKind[];
+  picked: Set<string>;
+  allSelected: boolean;
+  onToggleAll: (next: boolean) => void;
+  onToggleOne: (id: string, next: boolean) => void;
   onOpen: (id: string) => void;
+  onList: (id: string) => void;
 }) {
   return (
     <Table>
       <TableHeader className="sticky top-0 z-20 bg-card">
         <TableRow>
-          <TableHead className="w-16 pl-6">海报</TableHead>
+          <TableHead className="w-10 pl-4">
+            <Checkbox
+              checked={allSelected}
+              aria-label="全选当前列表"
+              onCheckedChange={(value) => onToggleAll(value === true)}
+            />
+          </TableHead>
+          <TableHead className="w-16">海报</TableHead>
           <TableHead className="min-w-36">片名</TableHead>
           {linkKinds.map((kind) => (
-            <TableHead key={kind} className="min-w-40 last:pr-6">
+            <TableHead key={kind} className="min-w-40">
               {LINK_LABELS[kind]}
             </TableHead>
           ))}
+          <TableHead className="w-28 pr-4 text-right">操作</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
         {titles.map((title) => {
           const grouped = groupCloudLinks(title);
+          const checked = picked.has(title.id);
           return (
             <TableRow
               key={title.id}
+              data-state={checked ? "selected" : undefined}
               className="cursor-pointer"
               onClick={() => onOpen(title.id)}
             >
-              <TableCell className="align-middle pl-6">
+              <TableCell
+                className="pl-4"
+                onClick={(event) => event.stopPropagation()}
+              >
+                <Checkbox
+                  checked={checked}
+                  aria-label={`选择 ${title.title}`}
+                  onCheckedChange={(value) =>
+                    onToggleOne(title.id, value === true)
+                  }
+                />
+              </TableCell>
+              <TableCell>
                 <PosterThumb title={title} />
               </TableCell>
-              <TableCell className="align-middle font-medium whitespace-normal">
+              <TableCell className="font-medium whitespace-normal">
                 {title.title}
               </TableCell>
               {linkKinds.map((kind) => (
-                <TableCell
-                  key={kind}
-                  className="align-middle whitespace-normal last:pr-6"
-                >
+                <TableCell key={kind} className="whitespace-normal">
                   <CloudLinkCell links={grouped.get(kind) ?? []} />
                 </TableCell>
               ))}
+              <TableCell
+                className="pr-4 text-right"
+                onClick={(event) => event.stopPropagation()}
+              >
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => onList(title.id)}
+                >
+                  <Store data-icon="inline-start" />
+                  上架闲鱼
+                </Button>
+              </TableCell>
             </TableRow>
           );
         })}
