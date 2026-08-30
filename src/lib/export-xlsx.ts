@@ -1,9 +1,11 @@
 import * as XLSX from "xlsx";
 import {
   EDITION_COLUMNS,
+  SUMMARY_COLUMNS,
   TITLE_COLUMNS,
   editionValues,
   flattenEdition,
+  flattenSummary,
   flattenTitle,
   titleValues,
   type CellValue,
@@ -64,11 +66,29 @@ export function catalogToXlsxArrayBuffer(titles: TitleRecord[]): ArrayBuffer {
   }) as ArrayBuffer;
 }
 
-export function downloadCatalogExcel(
-  titles: TitleRecord[],
-  filename = "yingqu-catalog.xlsx",
-) {
-  const buffer = catalogToXlsxArrayBuffer(titles);
+export function catalogToSummaryWorkbook(titles: TitleRecord[]): XLSX.WorkBook {
+  const workbook = XLSX.utils.book_new();
+  const rows = titles.map((title) => {
+    const row = flattenSummary(title);
+    return SUMMARY_COLUMNS.map((column) => row[column.key]);
+  });
+  XLSX.utils.book_append_sheet(
+    workbook,
+    sheetFromRows(
+      SUMMARY_COLUMNS.map((column) => column.label),
+      rows,
+      [28, 72],
+    ),
+    "影片汇总",
+  );
+  return workbook;
+}
+
+function downloadWorkbook(workbook: XLSX.WorkBook, filename: string) {
+  const buffer = XLSX.write(workbook, {
+    bookType: "xlsx",
+    type: "array",
+  }) as ArrayBuffer;
   const blob = new Blob([buffer], {
     type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   });
@@ -78,4 +98,18 @@ export function downloadCatalogExcel(
   anchor.download = filename;
   anchor.click();
   URL.revokeObjectURL(url);
+}
+
+export function downloadCatalogExcel(
+  titles: TitleRecord[],
+  filename = "yingqu-catalog.xlsx",
+) {
+  downloadWorkbook(catalogToWorkbook(titles), filename);
+}
+
+export function downloadSummaryExcel(
+  titles: TitleRecord[],
+  filename = "yingqu-catalog.xlsx",
+) {
+  downloadWorkbook(catalogToSummaryWorkbook(titles), filename);
 }

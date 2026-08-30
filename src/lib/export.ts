@@ -1,5 +1,25 @@
-import { LINK_LABELS, TYPE_LABELS } from "@/lib/labels";
+import {
+  formatCloudLinksText,
+  LINK_LABELS,
+  TYPE_LABELS,
+} from "@/lib/labels";
 import type { Edition, TitleRecord } from "@/lib/types";
+
+export const SUMMARY_COLUMNS = [
+  { key: "title", label: "片名" },
+  { key: "cloudLinks", label: "网盘链接" },
+] as const;
+
+export type SummaryColumnKey = (typeof SUMMARY_COLUMNS)[number]["key"];
+
+export type SummaryFlat = Record<SummaryColumnKey, string>;
+
+export function flattenSummary(title: TitleRecord): SummaryFlat {
+  return {
+    title: title.title,
+    cloudLinks: formatCloudLinksText(title),
+  };
+}
 
 export type CellValue = string | number;
 
@@ -168,6 +188,15 @@ export function catalogToCsv(titles: TitleRecord[]): string {
   const rows = titles.map((title) =>
     titleValues(flattenTitle(title)).map(csvCell),
   );
+  return `\uFEFF${[header.join(","), ...rows.map((row) => row.join(","))].join("\n")}`;
+}
+
+export function catalogToSummaryCsv(titles: TitleRecord[]): string {
+  const header = SUMMARY_COLUMNS.map((column) => column.label);
+  const rows = titles.map((title) => {
+    const row = flattenSummary(title);
+    return SUMMARY_COLUMNS.map((column) => csvCell(row[column.key]));
+  });
   return `\uFEFF${[header.join(","), ...rows.map((row) => row.join(","))].join("\n")}`;
 }
 

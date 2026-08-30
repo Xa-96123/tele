@@ -1,4 +1,4 @@
-import type { LinkKind, ResourceType } from "@/lib/types";
+import type { LinkKind, ResourceType, SourceLink, TitleRecord } from "@/lib/types";
 
 export const TYPE_LABELS: Record<ResourceType, string> = {
   movie: "电影",
@@ -24,3 +24,41 @@ export const LINK_LABELS: Record<LinkKind, string> = {
 };
 
 export const QUALITY_OPTIONS = ["2160p", "1080p", "720p", "480p", "8K"] as const;
+
+export const CLOUD_LINK_KINDS = [
+  "quark",
+  "aliyun",
+  "baidu",
+  "115",
+  "123pan",
+  "pikpak",
+  "mega",
+  "google",
+] as const satisfies readonly LinkKind[];
+
+export type CloudLinkKind = (typeof CLOUD_LINK_KINDS)[number];
+
+export function isCloudLinkKind(kind: LinkKind): kind is CloudLinkKind {
+  return (CLOUD_LINK_KINDS as readonly LinkKind[]).includes(kind);
+}
+
+export function collectCloudLinks(title: TitleRecord): SourceLink[] {
+  const seen = new Set<string>();
+  const links: SourceLink[] = [];
+  for (const edition of title.editions) {
+    for (const link of edition.links) {
+      if (!isCloudLinkKind(link.kind) || seen.has(link.url)) continue;
+      seen.add(link.url);
+      links.push(link);
+    }
+  }
+  return links;
+}
+
+export function formatCloudLink(link: SourceLink): string {
+  return `${LINK_LABELS[link.kind] ?? link.kind}: ${link.url}`;
+}
+
+export function formatCloudLinksText(title: TitleRecord): string {
+  return collectCloudLinks(title).map(formatCloudLink).join("\n");
+}

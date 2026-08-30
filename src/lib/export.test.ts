@@ -3,10 +3,18 @@ import test from "node:test";
 import * as XLSX from "xlsx";
 import { buildDemoCatalog } from "./demo-data.ts";
 import {
+  catalogToSummaryWorkbook,
   catalogToWorkbook,
   catalogToXlsxArrayBuffer,
 } from "./export-xlsx.ts";
-import { catalogToCsv, flattenTitle, TITLE_COLUMNS } from "./export.ts";
+import {
+  catalogToCsv,
+  catalogToSummaryCsv,
+  flattenSummary,
+  flattenTitle,
+  TITLE_COLUMNS,
+} from "./export.ts";
+import { collectCloudLinks } from "./labels.ts";
 
 test("flattenTitle includes identity and source links", () => {
   const { titles } = buildDemoCatalog();
@@ -66,4 +74,32 @@ test("excel workbook has title and edition sheets", () => {
   assert.ok(buffer.byteLength > 1000);
   const roundtrip = XLSX.read(buffer, { type: "array" });
   assert.deepEqual(roundtrip.SheetNames, ["影片汇总", "版本明细"]);
+});
+
+test("summary flatten and export only keep title and cloud links", () => {
+  const { titles } = buildDemoCatalog();
+  const dune = titles.find((title) => title.title.includes("沙丘"));
+  assert.ok(dune);
+  const links = collectCloudLinks(dune);
+  assert.ok(links.some((link) => link.kind === "quark"));
+  assert.ok(links.every((link) => link.kind !== "magnet"));
+
+  const row = flattenSummary(dune);
+  assert.equal(row.title, dune.title);
+  assert.match(row.cloudLinks, /夸克/);
+  assert.match(row.cloudLinks, /阿里云盘/);
+  assert.doesNotMatch(row.cloudLinks, /磁力/);
+
+  const csv = catalogToSummaryCsv(titles);
+  assert.ok(csv.startsWith("\uFEFF"));
+  assert.equal(csv.slice(1).split("\n")[0], "片名,网盘链接");
+
+  const workbook = catalogToSummaryWorkbook(titles);
+  assert.deepEqual(workbook.SheetNames, ["影片汇总"]);
+  const sheet = XLSX.utils.sheet_to_json<string[]>(
+    workbook.Sheets["影片汇总"]!,
+    { header: 1 },
+  );
+  assert.deepEqual(sheet[0], ["片名", "网盘链接"]);
+  assert.equal(sheet.length, titles.length + 1);
 });

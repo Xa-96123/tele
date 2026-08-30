@@ -24,7 +24,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         <div
           className={cn(
             "mx-auto flex h-14 w-full items-center justify-between px-4",
-            pathname.startsWith("/stats") ? "max-w-[100rem]" : "max-w-6xl",
+            "max-w-6xl",
           )}
         >
           <Link href="/" className="flex items-center gap-2.5">
@@ -67,7 +67,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <div
             className={cn(
               "mx-auto flex w-full items-start gap-3 px-4 py-2.5 text-sm text-amber-100/90",
-              pathname.startsWith("/stats") ? "max-w-[100rem]" : "max-w-6xl",
+              "max-w-6xl",
             )}
           >
             <p className="flex-1 leading-relaxed">
@@ -88,7 +88,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       <main
         className={cn(
           "mx-auto w-full flex-1 px-4 py-6 pb-24 md:pb-10",
-          pathname.startsWith("/stats") ? "max-w-[100rem]" : "max-w-6xl",
+          "max-w-6xl",
         )}
       >
         {children}
