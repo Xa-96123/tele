@@ -14,7 +14,7 @@ import {
   flattenTitle,
   TITLE_COLUMNS,
 } from "./export.ts";
-import { collectCloudLinks } from "./labels.ts";
+import { collectCloudLinks, titlePosterUrl } from "./labels.ts";
 
 test("flattenTitle includes identity and source links", () => {
   const { titles } = buildDemoCatalog();
@@ -76,23 +76,31 @@ test("excel workbook has title and edition sheets", () => {
   assert.deepEqual(roundtrip.SheetNames, ["影片汇总", "版本明细"]);
 });
 
-test("summary flatten and export only keep title and cloud links", () => {
+test("summary flatten and export split posters and cloud columns", () => {
   const { titles } = buildDemoCatalog();
   const dune = titles.find((title) => title.title.includes("沙丘"));
   assert.ok(dune);
   const links = collectCloudLinks(dune);
   assert.ok(links.some((link) => link.kind === "quark"));
   assert.ok(links.every((link) => link.kind !== "magnet"));
+  assert.ok(titlePosterUrl(dune));
 
   const row = flattenSummary(dune);
   assert.equal(row.title, dune.title);
-  assert.match(row.cloudLinks, /夸克/);
-  assert.match(row.cloudLinks, /阿里云盘/);
-  assert.doesNotMatch(row.cloudLinks, /磁力/);
+  assert.match(row.poster, /^data:image\/svg\+xml/);
+  assert.match(row.quark, /pan\.quark\.cn/);
+  assert.match(row.aliyun, /alipan\.com/);
+  assert.equal(row.baidu, "");
+  assert.doesNotMatch(JSON.stringify(row), /简介|保罗/);
 
   const csv = catalogToSummaryCsv(titles);
   assert.ok(csv.startsWith("\uFEFF"));
-  assert.equal(csv.slice(1).split("\n")[0], "片名,网盘链接");
+  const header = csv.slice(1).split("\n")[0];
+  assert.match(header, /^海报,片名,/);
+  assert.match(header, /夸克/);
+  assert.match(header, /阿里云盘/);
+  assert.match(header, /百度网盘/);
+  assert.doesNotMatch(header, /简介/);
 
   const workbook = catalogToSummaryWorkbook(titles);
   assert.deepEqual(workbook.SheetNames, ["影片汇总"]);
@@ -100,6 +108,10 @@ test("summary flatten and export only keep title and cloud links", () => {
     workbook.Sheets["影片汇总"]!,
     { header: 1 },
   );
-  assert.deepEqual(sheet[0], ["片名", "网盘链接"]);
+  assert.equal(sheet[0]?.[0], "海报");
+  assert.equal(sheet[0]?.[1], "片名");
+  assert.ok(sheet[0]?.includes("夸克"));
+  assert.ok(sheet[0]?.includes("阿里云盘"));
+  assert.ok(!sheet[0]?.includes("简介"));
   assert.equal(sheet.length, titles.length + 1);
 });

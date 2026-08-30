@@ -17,10 +17,14 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { catalogExcelFilename } from "@/lib/export";
+import { posterStyle } from "@/lib/format";
 import {
+  cloudKindsInTitles,
   collectCloudLinks,
-  formatCloudLink,
+  groupCloudLinks,
   LINK_LABELS,
+  titlePosterUrl,
+  type CloudLinkKind,
 } from "@/lib/labels";
 import type { SourceLink, TitleRecord } from "@/lib/types";
 
@@ -46,6 +50,7 @@ export function StatsView() {
     const q = query.trim().toLowerCase();
     return state.titles.filter((title) => matchesQuery(title, q));
   }, [query, state.titles]);
+  const linkKinds = useMemo(() => cloudKindsInTitles(filtered), [filtered]);
 
   if (!ready) {
     return <div className="h-40 rounded-xl bg-muted" />;
@@ -59,7 +64,7 @@ export function StatsView() {
     try {
       const { downloadSummaryExcel } = await import("@/lib/export-xlsx");
       downloadSummaryExcel(filtered, catalogExcelFilename(filtered.length));
-      toast.success(`已导出 ${filtered.length} 部影片（片名 + 网盘链接）`);
+      toast.success(`已导出 ${filtered.length} 部影片（海报、片名、分列网盘）`);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "导出失败");
     }
@@ -73,7 +78,7 @@ export function StatsView() {
             汇总
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            只列出片名和网盘链接，可导出为同样两列的 Excel。
+            列出海报、片名，以及按网盘类型分开的链接。不含简介。
           </p>
         </div>
         <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-center lg:w-auto">
@@ -125,6 +130,7 @@ export function StatsView() {
           ) : (
             <TitleTable
               titles={filtered}
+              linkKinds={linkKinds}
               onOpen={(id) => setSelectedId(id)}
             />
           )}
@@ -144,38 +150,49 @@ export function StatsView() {
 
 function TitleTable({
   titles,
+  linkKinds,
   onOpen,
 }: {
   titles: TitleRecord[];
+  linkKinds: CloudLinkKind[];
   onOpen: (id: string) => void;
 }) {
   return (
     <Table>
       <TableHeader className="sticky top-0 z-20 bg-card">
         <TableRow>
-          <TableHead className="w-[38%] min-w-40 pl-6">片名</TableHead>
-          <TableHead className="pr-6">网盘链接</TableHead>
+          <TableHead className="w-16 pl-6">海报</TableHead>
+          <TableHead className="min-w-36">片名</TableHead>
+          {linkKinds.map((kind) => (
+            <TableHead key={kind} className="min-w-40 last:pr-6">
+              {LINK_LABELS[kind]}
+            </TableHead>
+          ))}
         </TableRow>
       </TableHeader>
       <TableBody>
         {titles.map((title) => {
-          const links = collectCloudLinks(title);
+          const grouped = groupCloudLinks(title);
           return (
             <TableRow
               key={title.id}
               className="cursor-pointer"
               onClick={() => onOpen(title.id)}
             >
-              <TableCell className="align-top pl-6 font-medium whitespace-normal">
+              <TableCell className="align-middle pl-6">
+                <PosterThumb title={title} />
+              </TableCell>
+              <TableCell className="align-middle font-medium whitespace-normal">
                 {title.title}
               </TableCell>
-              <TableCell className="align-top pr-6 whitespace-normal">
-                {links.length === 0 ? (
-                  <span className="text-muted-foreground">—</span>
-                ) : (
-                  <CloudLinkList links={links} />
-                )}
-              </TableCell>
+              {linkKinds.map((kind) => (
+                <TableCell
+                  key={kind}
+                  className="align-middle whitespace-normal last:pr-6"
+                >
+                  <CloudLinkCell links={grouped.get(kind) ?? []} />
+                </TableCell>
+              ))}
             </TableRow>
           );
         })}
@@ -184,9 +201,36 @@ function TitleTable({
   );
 }
 
-function CloudLinkList({ links }: { links: SourceLink[] }) {
+function PosterThumb({ title }: { title: TitleRecord }) {
+  const src = titlePosterUrl(title);
   return (
-    <ul className="space-y-1.5">
+    <div
+      className="relative h-[4.5rem] w-12 overflow-hidden rounded-md bg-muted ring-1 ring-foreground/10"
+      style={src ? undefined : posterStyle(title.id)}
+    >
+      {src ? (
+        // Telegram CDN / demo posters; skip next/image host allowlisting.
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={src}
+          alt={`${title.title} 海报`}
+          className="size-full object-cover"
+        />
+      ) : (
+        <span className="absolute inset-0 flex items-end p-1 font-heading text-lg text-white/85">
+          {title.title.slice(0, 1)}
+        </span>
+      )}
+    </div>
+  );
+}
+
+function CloudLinkCell({ links }: { links: SourceLink[] }) {
+  if (links.length === 0) {
+    return <span className="text-muted-foreground">—</span>;
+  }
+  return (
+    <ul className="space-y-1">
       {links.map((link) => (
         <li key={link.url}>
           <a
@@ -196,7 +240,7 @@ function CloudLinkList({ links }: { links: SourceLink[] }) {
             className="break-all text-primary underline-offset-2 hover:underline"
             onClick={(event) => event.stopPropagation()}
           >
-            {formatCloudLink(link)}
+            {link.url}
           </a>
         </li>
       ))}

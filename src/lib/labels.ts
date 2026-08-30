@@ -62,3 +62,33 @@ export function formatCloudLink(link: SourceLink): string {
 export function formatCloudLinksText(title: TitleRecord): string {
   return collectCloudLinks(title).map(formatCloudLink).join("\n");
 }
+
+export function titlePosterUrl(title: TitleRecord): string | undefined {
+  return (
+    title.posterUrl ||
+    title.editions.find((edition) => edition.photoUrl)?.photoUrl
+  );
+}
+
+export function groupCloudLinks(
+  title: TitleRecord,
+): Map<CloudLinkKind, SourceLink[]> {
+  const grouped = new Map<CloudLinkKind, SourceLink[]>();
+  for (const link of collectCloudLinks(title)) {
+    const kind = link.kind as CloudLinkKind;
+    const list = grouped.get(kind) ?? [];
+    list.push(link);
+    grouped.set(kind, list);
+  }
+  return grouped;
+}
+
+export function cloudKindsInTitles(titles: TitleRecord[]): CloudLinkKind[] {
+  const seen = new Set<CloudLinkKind>();
+  for (const title of titles) {
+    for (const link of collectCloudLinks(title)) {
+      seen.add(link.kind as CloudLinkKind);
+    }
+  }
+  return CLOUD_LINK_KINDS.filter((kind) => seen.has(kind));
+}

@@ -1,12 +1,12 @@
 import * as XLSX from "xlsx";
 import {
   EDITION_COLUMNS,
-  SUMMARY_COLUMNS,
   TITLE_COLUMNS,
   editionValues,
   flattenEdition,
   flattenSummary,
   flattenTitle,
+  summaryColumns,
   titleValues,
   type CellValue,
 } from "@/lib/export";
@@ -68,16 +68,19 @@ export function catalogToXlsxArrayBuffer(titles: TitleRecord[]): ArrayBuffer {
 
 export function catalogToSummaryWorkbook(titles: TitleRecord[]): XLSX.WorkBook {
   const workbook = XLSX.utils.book_new();
+  const columns = summaryColumns(titles);
   const rows = titles.map((title) => {
     const row = flattenSummary(title);
-    return SUMMARY_COLUMNS.map((column) => row[column.key]);
+    return columns.map((column) => row[column.key] ?? "");
   });
   XLSX.utils.book_append_sheet(
     workbook,
     sheetFromRows(
-      SUMMARY_COLUMNS.map((column) => column.label),
+      columns.map((column) => column.label),
       rows,
-      [28, 72],
+      columns.map((column) =>
+        column.key === "poster" ? 36 : column.key === "title" ? 22 : 42,
+      ),
     ),
     "影片汇总",
   );

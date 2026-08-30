@@ -4,6 +4,11 @@ import type { ChannelPost, ChannelRecord, TitleRecord } from "@/lib/types";
 
 const NOW = "2026-03-12T09:00:00.000Z";
 
+function demoPoster(title: string, hue: number): string {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="180" height="240" viewBox="0 0 180 240"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="hsl(${hue} 32% 30%)"/><stop offset="100%" stop-color="hsl(${(hue + 40) % 360} 36% 12%)"/></linearGradient></defs><rect width="180" height="240" fill="url(#g)"/><text x="16" y="210" fill="white" fill-opacity=".9" font-size="42" font-family="serif">${title.slice(0, 1)}</text></svg>`;
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+}
+
 function post(
   channel: string,
   id: number,
@@ -39,6 +44,7 @@ IMDb：8.6
 夸克网盘：https://pan.quark.cn/s/demo-dune2
 阿里云盘：https://www.alipan.com/s/demo-dune2`,
     "2026-03-10T11:20:00.000Z",
+    demoPoster("沙", 28),
   ),
   post(
     "demo_cine_4k",
@@ -52,6 +58,7 @@ IMDb：8.6
 简介：美国原子弹计划负责人的崛起与审判。
 百度网盘：https://pan.baidu.com/s/demo-oppenheimer`,
     "2026-03-08T08:10:00.000Z",
+    demoPoster("奥", 18),
   ),
   post(
     "demo_cine_4k",
@@ -64,6 +71,7 @@ IMDb：8.6
 导演：奉俊昊
 夸克：https://pan.quark.cn/s/demo-parasite`,
     "2026-02-22T16:40:00.000Z",
+    demoPoster("寄", 8),
   ),
   post(
     "demo_cine_4k",
@@ -75,6 +83,7 @@ IMDb：8.6
 简介：重庆小工厂保卫翡翠展品的荒诞闹剧。
 https://pan.quark.cn/s/demo-crazy-stone`,
     "2026-02-18T02:15:00.000Z",
+    demoPoster("疯", 42),
   ),
   post(
     "demo_cine_4k",
@@ -85,6 +94,7 @@ https://pan.quark.cn/s/demo-crazy-stone`,
 1080p BluRay 4.8 GB
 https://www.alipan.com/s/demo-chihiro`,
     "2026-02-01T19:00:00.000Z",
+    demoPoster("千", 160),
   ),
   post(
     "demo_series_vault",
@@ -99,6 +109,7 @@ https://www.alipan.com/s/demo-chihiro`,
 简介：一场十八年的凶案，把三个家庭重新拧在一起。
 夸克网盘：https://pan.quark.cn/s/demo-season`,
     "2026-03-11T04:30:00.000Z",
+    demoPoster("漫", 200),
   ),
   post(
     "demo_series_vault",
@@ -112,6 +123,7 @@ https://www.alipan.com/s/demo-chihiro`,
 https://www.alipan.com/s/demo-santi
 https://pan.quark.cn/s/demo-santi`,
     "2026-03-04T13:12:00.000Z",
+    demoPoster("三", 210),
   ),
   post(
     "demo_series_vault",
@@ -124,6 +136,7 @@ https://pan.quark.cn/s/demo-santi`,
 1080p WEB-DL
 https://pan.quark.cn/s/demo-frieren`,
     "2026-02-27T09:45:00.000Z",
+    demoPoster("葬", 265),
   ),
   post(
     "demo_series_vault",
@@ -134,6 +147,7 @@ BBC
 全8集 31.0 GB
 https://www.alipan.com/s/demo-earth`,
     "2026-02-12T21:05:00.000Z",
+    demoPoster("地", 145),
   ),
   post(
     "demo_cine_4k",
@@ -144,6 +158,7 @@ https://www.alipan.com/s/demo-earth`,
 1080p WEB-DL 6.3GB
 https://pan.baidu.com/s/demo-chuhai`,
     "2026-01-30T07:22:00.000Z",
+    demoPoster("周", 350),
   ),
   post(
     "demo_series_vault",

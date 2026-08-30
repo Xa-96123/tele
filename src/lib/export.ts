@@ -1,24 +1,41 @@
 import {
-  formatCloudLinksText,
+  CLOUD_LINK_KINDS,
+  cloudKindsInTitles,
+  groupCloudLinks,
   LINK_LABELS,
+  titlePosterUrl,
   TYPE_LABELS,
 } from "@/lib/labels";
 import type { Edition, TitleRecord } from "@/lib/types";
 
-export const SUMMARY_COLUMNS = [
+export const SUMMARY_BASE_COLUMNS = [
+  { key: "poster", label: "海报" },
   { key: "title", label: "片名" },
-  { key: "cloudLinks", label: "网盘链接" },
 ] as const;
 
-export type SummaryColumnKey = (typeof SUMMARY_COLUMNS)[number]["key"];
+export function summaryColumns(titles: TitleRecord[]) {
+  const kinds = cloudKindsInTitles(titles);
+  const linkColumns = (kinds.length ? kinds : [...CLOUD_LINK_KINDS]).map(
+    (kind) => ({
+      key: kind,
+      label: LINK_LABELS[kind],
+    }),
+  );
+  return [...SUMMARY_BASE_COLUMNS, ...linkColumns];
+}
 
-export type SummaryFlat = Record<SummaryColumnKey, string>;
+export type SummaryFlat = Record<string, string>;
 
 export function flattenSummary(title: TitleRecord): SummaryFlat {
-  return {
+  const grouped = groupCloudLinks(title);
+  const row: SummaryFlat = {
+    poster: titlePosterUrl(title) ?? "",
     title: title.title,
-    cloudLinks: formatCloudLinksText(title),
   };
+  for (const kind of CLOUD_LINK_KINDS) {
+    row[kind] = (grouped.get(kind) ?? []).map((link) => link.url).join("\n");
+  }
+  return row;
 }
 
 export type CellValue = string | number;
@@ -192,10 +209,11 @@ export function catalogToCsv(titles: TitleRecord[]): string {
 }
 
 export function catalogToSummaryCsv(titles: TitleRecord[]): string {
-  const header = SUMMARY_COLUMNS.map((column) => column.label);
+  const columns = summaryColumns(titles);
+  const header = columns.map((column) => column.label);
   const rows = titles.map((title) => {
     const row = flattenSummary(title);
-    return SUMMARY_COLUMNS.map((column) => csvCell(row[column.key]));
+    return columns.map((column) => csvCell(row[column.key] ?? ""));
   });
   return `\uFEFF${[header.join(","), ...rows.map((row) => row.join(","))].join("\n")}`;
 }
