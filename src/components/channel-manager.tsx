@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Download,
   FileUp,
@@ -57,6 +57,17 @@ export function ChannelManager() {
   const [importing, setImporting] = useState(false);
   const [syncingAll, setSyncingAll] = useState(false);
   const [sourceTab, setSourceTab] = useState("web");
+
+  useEffect(() => {
+    function onPasteImport() {
+      setSourceTab("web");
+      setImportOpen(true);
+    }
+    window.addEventListener("yingqu:paste-import", onPasteImport);
+    return () => {
+      window.removeEventListener("yingqu:paste-import", onPasteImport);
+    };
+  }, []);
 
   async function onImport() {
     setImporting(true);
@@ -314,7 +325,7 @@ export function ChannelManager() {
           <DialogHeader>
             <DialogTitle>从网页版粘贴帖子</DialogTitle>
             <DialogDescription>
-              在 web.telegram.org 打开频道，选中影片介绍复制后贴进来。多条帖子用空行或 --- 分隔。
+              本机打不开 t.me 时用这个。在 web.telegram.org 打开频道，选中影片介绍复制后贴进来。多条帖子用空行或 --- 分隔。
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-2">

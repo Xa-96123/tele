@@ -1,5 +1,9 @@
 import { channelUrl, normalizeChannelUsername } from "@/lib/channel";
-import { parsePostToTitle, parsePreviewHtmlAsync } from "@/lib/parser";
+import {
+  looksLikeTelegramPreview,
+  parsePostToTitle,
+  parsePreviewHtmlAsync,
+} from "@/lib/parser";
 import { mergeTitles } from "@/lib/catalog";
 import type { ChannelPost, SyncResult } from "@/lib/types";
 
@@ -10,64 +14,97 @@ export class ChannelFetchError extends Error {
   constructor(
     message: string,
     readonly status = 400,
+    readonly code?: "preview_blocked",
   ) {
     super(message);
     this.name = "ChannelFetchError";
   }
 }
 
-function previewUrls(username: string, before?: string): string[] {
-  const paths = [
-    channelUrl(username),
-    `https://telegram.me/s/${username}`,
+type PreviewCandidate = {
+  url: string;
+  headers?: Record<string, string>;
+};
+
+export function buildPreviewCandidates(
+  username: string,
+  before?: string,
+): PreviewCandidate[] {
+  const direct = [channelUrl(username), `https://telegram.me/s/${username}`].map(
+    (href) => {
+      const url = new URL(href);
+      if (before) url.searchParams.set("before", before);
+      return url.toString();
+    },
+  );
+
+  const htmlHeaders = {
+    "X-Return-Format": "html",
+    Accept: "text/html,application/xhtml+xml,text/plain;q=0.8",
+  };
+
+  return [
+    ...direct.map((url) => ({ url })),
+    ...direct.map((url) => ({
+      url: `https://r.jina.ai/${url}`,
+      headers: htmlHeaders,
+    })),
   ];
-  return paths.map((href) => {
-    const url = new URL(href);
-    if (before) url.searchParams.set("before", before);
-    return url.toString();
-  });
+}
+
+async function fetchOne(candidate: PreviewCandidate): Promise<string> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 12000);
+  try {
+    const res = await fetch(candidate.url, {
+      headers: {
+        "User-Agent": UA,
+        Accept: "text/html,application/xhtml+xml",
+        "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+        ...candidate.headers,
+      },
+      signal: controller.signal,
+      cache: "no-store",
+      redirect: "follow",
+    });
+    if (!res.ok) {
+      throw new ChannelFetchError(
+        `读取预览失败（${res.status}）。`,
+        res.status,
+      );
+    }
+    const html = await res.text();
+    if (!looksLikeTelegramPreview(html)) {
+      throw new ChannelFetchError("返回的页面里没有公开帖子。", 422);
+    }
+    return html;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 async function fetchPreviewPage(username: string, before?: string) {
-  const targets = previewUrls(username, before);
+  const candidates = buildPreviewCandidates(username, before);
   let lastError: unknown;
 
-  for (const target of targets) {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 15000);
+  for (const candidate of candidates) {
     try {
-      const res = await fetch(target, {
-        headers: {
-          "User-Agent": UA,
-          Accept: "text/html,application/xhtml+xml",
-          "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
-        },
-        signal: controller.signal,
-        cache: "no-store",
-        redirect: "follow",
-      });
-      if (!res.ok) {
-        lastError = new ChannelFetchError(
-          `Telegram 返回 ${res.status}，频道可能不存在或暂不可用。`,
-          res.status,
-        );
-        continue;
-      }
-      return await res.text();
+      return await fetchOne(candidate);
     } catch (error) {
       lastError = error;
-    } finally {
-      clearTimeout(timer);
     }
   }
 
-  if (lastError instanceof ChannelFetchError) throw lastError;
+  if (lastError instanceof ChannelFetchError && lastError.status === 422) {
+    throw lastError;
+  }
   if (lastError instanceof Error && lastError.name === "AbortError") {
     throw new ChannelFetchError("读取频道预览超时，请稍后重试。", 504);
   }
   throw new ChannelFetchError(
-    "无法访问公开预览（t.me 在部分网络会被拦截）。请在 web.telegram.org 打开频道，复制影片帖子后再点「粘贴导入」。",
+    "当前网络访问不了 t.me 公开预览。请在 web.telegram.org 打开频道，复制影片帖子后再点「粘贴导入」。",
     502,
+    "preview_blocked",
   );
 }
 

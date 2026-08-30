@@ -40,6 +40,7 @@ export function TelegramWebPanel({
     const ok = await addAndSync(parsed.username);
     setAdding(false);
     if (ok) setValue("");
+    else onPastePosts();
   }
 
   return (

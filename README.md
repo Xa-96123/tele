@@ -48,7 +48,7 @@ npm run build
 
 [my.telegram.org/apps](https://my.telegram.org/apps) 点「Create application」报 ERROR、空白或没反应很常见。影渠**不依赖**这一步。
 
-优先用 Telegram 网页版：打开 [web.telegram.org](https://web.telegram.org/k/)，把公开频道链接贴进「频道 → 网页版」，或把帖子复制进来。也可以继续用桌面导出。
+优先用 Telegram 网页版：打开 [web.telegram.org](https://web.telegram.org/k/)，把公开频道链接贴进「频道 → 网页版」。本机如果打不开 t.me，影渠会改走备用读取；仍失败时会自动打开「粘贴导入」，把网页版里复制的影片帖贴进去即可。也可以继续用桌面导出。
 
 ### 可选：把 API 凭证写进环境变量
 

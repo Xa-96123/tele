@@ -18,7 +18,10 @@ export async function POST(request: NextRequest) {
     return Response.json(result);
   } catch (error) {
     if (error instanceof ChannelFetchError) {
-      return Response.json({ error: error.message }, { status: error.status });
+      return Response.json(
+        { error: error.message, code: error.code },
+        { status: error.status },
+      );
     }
     return Response.json({ error: "同步失败，请稍后重试。" }, { status: 500 });
   }

@@ -505,6 +505,10 @@ export function parsePlainPosts(
   return { titles, skipped, posts: chunks.length };
 }
 
+export function looksLikeTelegramPreview(html: string): boolean {
+  return /js-widget_message|data-post="[^"]+\//.test(html);
+}
+
 export function parsePreviewHtml(html: string, fallbackUsername: string) {
   return parseTelegramPreview(html, fallbackUsername);
 }

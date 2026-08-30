@@ -4,10 +4,12 @@ import { normalizeChannelUsername, parseChannelInput } from "./channel.ts";
 import {
   classifyLink,
   extractLinks,
+  looksLikeTelegramPreview,
   parsePlainPosts,
   parsePostToTitle,
   parsePreviewHtmlAsync,
 } from "./parser.ts";
+import { buildPreviewCandidates } from "./telegram.ts";
 import { mergeTitles, summarizeCatalog } from "./catalog.ts";
 import { buildDemoCatalog } from "./demo-data.ts";
 import type { ChannelPost } from "./types.ts";
@@ -60,6 +62,14 @@ test("normalize telegram usernames", () => {
     ok: false,
     reason: "private_web",
   });
+});
+
+test("preview fallbacks include a reader when t.me is blocked", () => {
+  const urls = buildPreviewCandidates("Aliyun_4K_Movies").map((item) => item.url);
+  assert.ok(urls.some((url) => url.includes("t.me/s/Aliyun_4K_Movies")));
+  assert.ok(urls.some((url) => url.includes("r.jina.ai/https://t.me/s/Aliyun_4K_Movies")));
+  assert.ok(looksLikeTelegramPreview('<div class="js-widget_message" data-post="a/1">'));
+  assert.equal(looksLikeTelegramPreview("<html><body>blocked</body></html>"), false);
 });
 
 test("parses Aliyun_4K_Movies name/description posts", () => {

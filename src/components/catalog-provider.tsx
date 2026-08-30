@@ -200,7 +200,7 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
       }));
 
       try {
-        let data: SyncResult & { error?: string };
+        let data: SyncResult & { error?: string; code?: string };
         if (current?.source === "account") {
           const auth = readAccountAuth();
           if (!auth?.session) {
@@ -241,9 +241,16 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
               pages: more ? 2 : 3,
             }),
           });
-          data = (await res.json()) as SyncResult & { error?: string };
+          data = (await res.json()) as SyncResult & {
+            error?: string;
+            code?: string;
+          };
           if (!res.ok) {
-            throw new Error(data.error || "同步失败");
+            const err = new Error(data.error || "同步失败") as Error & {
+              code?: string;
+            };
+            err.code = data.code;
+            throw err;
           }
         }
         applySync(data.channel.username, data, more);
@@ -269,6 +276,16 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
           ),
         }));
         toast.error(message);
+        if (
+          typeof window !== "undefined" &&
+          ((error as { code?: string }).code === "preview_blocked" ||
+            message.includes("t.me") ||
+            message.includes("粘贴导入"))
+        ) {
+          window.dispatchEvent(
+            new CustomEvent("yingqu:paste-import", { detail: { username } }),
+          );
+        }
         return false;
       }
     },
