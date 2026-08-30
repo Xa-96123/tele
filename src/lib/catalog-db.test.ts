@@ -266,6 +266,70 @@ test("removeChannelFromSqlite deletes one channel and keeps the rest", () => {
   }
 });
 
+test("applyImportToSqlite keeps colliding paste edition ids on separate titles", () => {
+  const { file, dir } = tempDb();
+  try {
+    applyImportToSqlite(
+      [
+        {
+          id: "a",
+          title: "影片甲",
+          type: "movie",
+          genres: [],
+          cast: [],
+          editions: [
+            {
+              id: "imported/1",
+              channel: "imported",
+              channelTitle: "手动导入",
+              messageId: 1,
+              postUrl: "https://t.me/imported/1",
+              links: [{ kind: "quark", url: "https://pan.quark.cn/s/a" }],
+              rawText: "影片甲",
+            },
+          ],
+          firstSeenAt: "2026-04-01T00:00:00.000Z",
+          lastSeenAt: "2026-04-01T00:00:00.000Z",
+        },
+      ],
+      1,
+      file,
+    );
+    applyImportToSqlite(
+      [
+        {
+          id: "b",
+          title: "影片乙",
+          type: "movie",
+          genres: [],
+          cast: [],
+          editions: [
+            {
+              id: "imported/1",
+              channel: "imported",
+              channelTitle: "手动导入",
+              messageId: 1,
+              postUrl: "https://t.me/imported/1",
+              links: [{ kind: "quark", url: "https://pan.quark.cn/s/b" }],
+              rawText: "影片乙",
+            },
+          ],
+          firstSeenAt: "2026-04-02T00:00:00.000Z",
+          lastSeenAt: "2026-04-02T00:00:00.000Z",
+        },
+      ],
+      1,
+      file,
+    );
+    const loaded = readCatalogState(file);
+    assert.equal(loaded.titles.length, 2);
+    assert.equal(catalogTableCounts(file).editions, 2);
+  } finally {
+    closeCatalogDb(file);
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("replaceCatalogState overwrites previous rows", () => {
   const { file, dir } = tempDb();
   try {

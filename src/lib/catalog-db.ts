@@ -123,8 +123,6 @@ CREATE INDEX IF NOT EXISTS idx_editions_title ON editions(title_id);
 CREATE INDEX IF NOT EXISTS idx_editions_channel ON editions(channel);
 CREATE INDEX IF NOT EXISTS idx_links_edition ON links(edition_id);
 CREATE INDEX IF NOT EXISTS idx_links_kind ON links(kind);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_titles_resource_key
-  ON titles(resource_key) WHERE resource_key IS NOT NULL AND resource_key != '';
 `;
 
 const dbs = new Map<string, SqliteDb>();
@@ -217,7 +215,10 @@ export function defaultCatalogDbPath() {
 
 export function getCatalogDb(filePath = defaultCatalogDbPath()): SqliteDb {
   const existing = dbs.get(filePath);
-  if (existing) return existing;
+  if (existing) {
+    migrateCatalogSchema(existing);
+    return existing;
+  }
   mkdirSync(path.dirname(filePath), { recursive: true });
   const db = new DatabaseSync(filePath, { enableForeignKeyConstraints: true });
   db.exec(SCHEMA_SQL);
@@ -753,9 +754,18 @@ function upsertTitleRow(db: SqliteDb, incoming: TitleRecord) {
   `);
 
   title.editions.forEach((edition, editionPosition) => {
-    if (existingEditionIds.has(edition.id)) return;
+    let editionId = edition.id;
+    if (existingEditionIds.has(editionId)) return;
+    const occupied = db
+      .prepare("SELECT title_id FROM editions WHERE id = ?")
+      .get(editionId) as { title_id: string } | undefined;
+    if (occupied?.title_id === title.id) return;
+    if (occupied) {
+      editionId = `${edition.id}~${title.id}`;
+      if (existingEditionIds.has(editionId)) return;
+    }
     putEdition.run(
-      edition.id,
+      editionId,
       title.id,
       edition.channel,
       edition.channelTitle,
@@ -774,13 +784,14 @@ function upsertTitleRow(db: SqliteDb, incoming: TitleRecord) {
     );
     edition.links.forEach((link, linkPosition) => {
       putLink.run(
-        edition.id,
+        editionId,
         link.kind,
         link.url,
         link.label ?? null,
         linkPosition,
       );
     });
+    existingEditionIds.add(editionId);
   });
   return title;
 }
