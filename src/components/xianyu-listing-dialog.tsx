@@ -124,7 +124,7 @@ export function XianyuListingDialog({
     }
     window.open(XIANYU_PUBLISH_URL, "_blank", "noopener,noreferrer");
     toast.message("已打开闲鱼发布页", {
-      description: "把复制的标题、价格、网盘描述贴进去，再上传刚下载的海报。",
+      description: "把复制的标题、价格、简介贴进去，再上传刚下载的海报。",
     });
     if (index < titles.length - 1) setIndex((value) => value + 1);
   }
@@ -135,7 +135,7 @@ export function XianyuListingDialog({
         <DialogHeader>
           <DialogTitle>上架闲鱼</DialogTitle>
           <DialogDescription>
-            闲鱼没有开放个人自动发布接口。这里会生成标题、价格和网盘描述，复制后打开官方发布页粘贴。不含简介。
+            闲鱼没有开放个人自动发布接口。这里会生成标题、价格和简介，复制后打开官方发布页粘贴。不含网盘链接。
             {titles.length > 1 ? ` 当前 ${index + 1} / ${titles.length} 部。` : ""}
           </DialogDescription>
         </DialogHeader>
@@ -170,7 +170,7 @@ export function XianyuListingDialog({
               </div>
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="xianyu-desc">商品描述（仅片名和网盘）</Label>
+              <Label htmlFor="xianyu-desc">商品描述（片名和简介）</Label>
               <Textarea
                 id="xianyu-desc"
                 value={description}

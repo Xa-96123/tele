@@ -1,9 +1,4 @@
-import {
-  collectCloudLinks,
-  formatCloudLink,
-  LINK_LABELS,
-  titlePosterUrl,
-} from "@/lib/labels";
+import { titlePosterUrl, TYPE_LABELS } from "@/lib/labels";
 import type { TitleRecord } from "@/lib/types";
 
 export const XIANYU_PUBLISH_URL = "https://www.goofish.com/publish";
@@ -26,28 +21,23 @@ export function clipXianyuTitle(input: string, max = XIANYU_TITLE_MAX): string {
 }
 
 export function buildXianyuTitle(title: TitleRecord): string {
-  const kinds = [
-    ...new Set(
-      collectCloudLinks(title).map((link) => LINK_LABELS[link.kind] ?? link.kind),
-    ),
-  ].join("/");
-  const parts = [title.title, title.year ? String(title.year) : "", kinds].filter(
-    Boolean,
-  );
+  const parts = [
+    title.title,
+    title.year ? String(title.year) : "",
+    TYPE_LABELS[title.type] ?? "",
+  ].filter(Boolean);
   return clipXianyuTitle(parts.join(" "));
 }
 
 export function buildXianyuDescription(title: TitleRecord): string {
-  const links = collectCloudLinks(title);
+  const overview = title.overview?.replace(/\s+/g, " ").trim();
   const lines = [
     `片名：${title.title}`,
     title.year ? `年份：${title.year}` : "",
     title.originalTitle ? `原名：${title.originalTitle}` : "",
     "",
-    "网盘：",
-    ...(links.length
-      ? links.map((link) => formatCloudLink(link))
-      : ["（暂无网盘链接）"]),
+    "简介：",
+    overview || "（暂无简介）",
   ].filter((line, index, all) => line !== "" || all[index - 1] !== "");
   return lines.join("\n").trim();
 }
