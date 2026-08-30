@@ -47,7 +47,7 @@ async function fetchPreviewPage(username: string, before?: string) {
       throw new ChannelFetchError("读取频道预览超时，请稍后重试。", 504);
     }
     throw new ChannelFetchError(
-      "无法访问 t.me 公开预览。可改用粘贴帖子导入。",
+      "无法访问 t.me 公开预览。请改在 Telegram 网页版复制帖子，再点「粘贴导入」。",
       502,
     );
   } finally {
@@ -62,7 +62,9 @@ export async function syncPublicChannel(options: {
 }): Promise<SyncResult> {
   const username = normalizeChannelUsername(options.username);
   if (!username) {
-    throw new ChannelFetchError("频道用户名无效。请填写 @channel 或 t.me 链接。");
+    throw new ChannelFetchError(
+      "频道用户名无效。请填写 @channel、t.me 链接，或 web.telegram.org/k/#@频道名。",
+    );
   }
 
   const pages = Math.min(Math.max(options.pages ?? 3, 1), 8);

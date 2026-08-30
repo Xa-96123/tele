@@ -1,4 +1,3 @@
-import * as XLSX from "xlsx";
 import { LINK_LABELS, TYPE_LABELS } from "@/lib/labels";
 import type { Edition, TitleRecord } from "@/lib/types";
 
@@ -156,11 +155,11 @@ export function flattenEdition(
   };
 }
 
-function titleValues(row: TitleFlat): CellValue[] {
+export function titleValues(row: TitleFlat): CellValue[] {
   return TITLE_COLUMNS.map((column) => row[column.key]);
 }
 
-function editionValues(row: EditionFlat): CellValue[] {
+export function editionValues(row: EditionFlat): CellValue[] {
   return EDITION_COLUMNS.map((column) => row[column.key]);
 }
 
@@ -176,76 +175,6 @@ function csvCell(value: CellValue): string {
   const text = String(value);
   if (/[",\n]/.test(text)) return `"${text.replaceAll('"', '""')}"`;
   return text;
-}
-
-function sheetFromRows(
-  headers: string[],
-  rows: CellValue[][],
-  widths: number[],
-): XLSX.WorkSheet {
-  const sheet = XLSX.utils.aoa_to_sheet([headers, ...rows]);
-  sheet["!cols"] = widths.map((wch) => ({ wch }));
-  return sheet;
-}
-
-export function catalogToWorkbook(titles: TitleRecord[]): XLSX.WorkBook {
-  const workbook = XLSX.utils.book_new();
-  const titleRows = titles.map((title) => titleValues(flattenTitle(title)));
-  const editionRows = titles.flatMap((title) =>
-    title.editions.map((edition) =>
-      editionValues(flattenEdition(title, edition)),
-    ),
-  );
-
-  XLSX.utils.book_append_sheet(
-    workbook,
-    sheetFromRows(
-      TITLE_COLUMNS.map((column) => column.label),
-      titleRows,
-      [
-        22, 22, 8, 8, 16, 14, 22, 8, 8, 40, 28, 8, 10, 12, 16, 12, 12, 16, 48,
-        18, 16, 36, 22, 22, 48,
-      ],
-    ),
-    "影片汇总",
-  );
-  XLSX.utils.book_append_sheet(
-    workbook,
-    sheetFromRows(
-      EDITION_COLUMNS.map((column) => column.label),
-      editionRows,
-      [
-        22, 22, 8, 8, 8, 8, 18, 16, 10, 36, 22, 16, 12, 12, 8, 12, 16, 48, 28,
-        48,
-      ],
-    ),
-    "版本明细",
-  );
-  return workbook;
-}
-
-export function catalogToXlsxArrayBuffer(titles: TitleRecord[]): ArrayBuffer {
-  const workbook = catalogToWorkbook(titles);
-  return XLSX.write(workbook, {
-    bookType: "xlsx",
-    type: "array",
-  }) as ArrayBuffer;
-}
-
-export function downloadCatalogExcel(
-  titles: TitleRecord[],
-  filename = "yingqu-catalog.xlsx",
-) {
-  const buffer = catalogToXlsxArrayBuffer(titles);
-  const blob = new Blob([buffer], {
-    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = filename;
-  anchor.click();
-  URL.revokeObjectURL(url);
 }
 
 export function downloadText(filename: string, content: string, mime: string) {

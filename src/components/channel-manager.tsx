@@ -1,11 +1,10 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useState } from "react";
 import {
   Download,
   FileUp,
   Loader2,
-  Plus,
   RefreshCw,
   Trash2,
 } from "lucide-react";
@@ -28,15 +27,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { normalizeChannelUsername } from "@/lib/channel";
 import { DEMO_IMPORT_SAMPLE } from "@/lib/demo-data";
+import { TelegramWebPanel } from "@/components/telegram-web-panel";
 import {
   catalogExcelFilename,
   catalogToCsv,
-  downloadCatalogExcel,
   downloadText,
 } from "@/lib/export";
 import { formatRelativeTime } from "@/lib/format";
@@ -48,7 +45,6 @@ export function ChannelManager() {
   const {
     ready,
     state,
-    addAndSync,
     syncOne,
     syncAll,
     importText,
@@ -56,25 +52,11 @@ export function ChannelManager() {
     loadDemo,
     clearAll,
   } = useCatalog();
-  const [username, setUsername] = useState("");
-  const [adding, setAdding] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [importValue, setImportValue] = useState("");
   const [importing, setImporting] = useState(false);
   const [syncingAll, setSyncingAll] = useState(false);
-
-  async function onAdd(e: FormEvent) {
-    e.preventDefault();
-    const normalized = normalizeChannelUsername(username);
-    if (!normalized) {
-      toast.error("请输入公开频道用户名，例如 moviehub 或 https://t.me/s/moviehub");
-      return;
-    }
-    setAdding(true);
-    const ok = await addAndSync(normalized);
-    setAdding(false);
-    if (ok) setUsername("");
-  }
+  const [sourceTab, setSourceTab] = useState("web");
 
   async function onImport() {
     setImporting(true);
@@ -104,7 +86,7 @@ export function ChannelManager() {
             频道
           </h1>
           <p className="mt-1 max-w-xl text-sm text-muted-foreground">
-            Mac 上已经登录 Telegram 的话，用验证码授权即可读取你加入的频道；也可以导入桌面版官方导出。公开频道仍可用网页预览。
+            直接用 Telegram 网页版即可，不必创建应用程序。公开频道贴链接，私密频道复制帖子。
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -123,46 +105,28 @@ export function ChannelManager() {
         </div>
       </div>
 
-      <Tabs defaultValue="account">
+      <Tabs
+        value={sourceTab}
+        onValueChange={(next) => {
+          if (next) setSourceTab(next);
+        }}
+      >
         <TabsList variant="line" className="w-full max-w-xl">
-          <TabsTrigger value="account">已登录账号</TabsTrigger>
+          <TabsTrigger value="web">网页版</TabsTrigger>
           <TabsTrigger value="export">桌面导出</TabsTrigger>
-          <TabsTrigger value="preview">公开预览</TabsTrigger>
+          <TabsTrigger value="account">已登录账号</TabsTrigger>
         </TabsList>
+        <TabsContent value="web" className="mt-4">
+          <TelegramWebPanel onPastePosts={() => setImportOpen(true)} />
+        </TabsContent>
         <TabsContent value="account" className="mt-4">
-          <AccountPanel />
+          <AccountPanel
+            onUseExport={() => setSourceTab("export")}
+            onUseWeb={() => setSourceTab("web")}
+          />
         </TabsContent>
         <TabsContent value="export" className="mt-4">
           <ExportPanel />
-        </TabsContent>
-        <TabsContent value="preview" className="mt-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>添加公开频道</CardTitle>
-              <CardDescription>
-                支持 @username、https://t.me/username 或 https://t.me/s/username。无需登录，但私密频道读不到。
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <form onSubmit={onAdd} className="flex flex-col gap-2 sm:flex-row">
-                <Input
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  placeholder="@moviehub 或 t.me/s/moviehub"
-                  className="h-9"
-                  aria-label="频道用户名"
-                />
-                <Button type="submit" disabled={adding} className="sm:w-36">
-                  {adding ? (
-                    <Loader2 data-icon="inline-start" className="animate-spin" />
-                  ) : (
-                    <Plus data-icon="inline-start" />
-                  )}
-                  提取并汇总
-                </Button>
-              </form>
-            </CardContent>
-          </Card>
         </TabsContent>
       </Tabs>
 
@@ -171,7 +135,7 @@ export function ChannelManager() {
           <div className="rounded-xl border border-dashed px-6 py-14 text-center">
             <p className="font-heading text-lg">还没有频道</p>
             <p className="mt-2 text-sm text-muted-foreground">
-              添加一个公开电影频道，或载入演示片库看看效果。
+              用 Telegram 网页版贴频道链接，或载入演示片库看看效果。
             </p>
             <Button className="mt-4" variant="secondary" onClick={loadDemo}>
               载入演示片库
@@ -316,13 +280,21 @@ export function ChannelManager() {
                 toast.error("没有可导出的影片");
                 return;
               }
-              downloadCatalogExcel(
-                state.titles,
-                catalogExcelFilename(state.titles.length),
-              );
-              toast.success(
-                `已导出 ${state.titles.length} 部影片到 Excel`,
-              );
+              void import("@/lib/export-xlsx")
+                .then(({ downloadCatalogExcel }) => {
+                  downloadCatalogExcel(
+                    state.titles,
+                    catalogExcelFilename(state.titles.length),
+                  );
+                  toast.success(
+                    `已导出 ${state.titles.length} 部影片到 Excel`,
+                  );
+                })
+                .catch((error) => {
+                  toast.error(
+                    error instanceof Error ? error.message : "导出失败",
+                  );
+                });
             }}
           >
             <Download data-icon="inline-start" />
@@ -340,9 +312,9 @@ export function ChannelManager() {
       <Dialog open={importOpen} onOpenChange={setImportOpen}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>粘贴频道帖子</DialogTitle>
+            <DialogTitle>从网页版粘贴帖子</DialogTitle>
             <DialogDescription>
-              把 Telegram 里复制的影片介绍贴进来。多条帖子用空行或 --- 分隔。
+              在 web.telegram.org 打开频道，选中影片介绍复制后贴进来。多条帖子用空行或 --- 分隔。
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-2">

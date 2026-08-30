@@ -22,6 +22,14 @@ import type {
 
 const STORAGE_KEY = "yingqu.catalog.v1";
 
+const SERVER_SNAPSHOT: CatalogState = {
+  version: 1,
+  initialized: false,
+  noticeDismissed: false,
+  channels: [],
+  titles: [],
+};
+
 const emptyState = (): CatalogState => ({
   version: 1,
   initialized: false,
@@ -50,7 +58,7 @@ type CatalogContextValue = {
 const CatalogContext = createContext<CatalogContextValue | null>(null);
 
 const listeners = new Set<() => void>();
-let snapshot = emptyState();
+let snapshot: CatalogState = SERVER_SNAPSHOT;
 let hydrated = false;
 
 function readStore(): CatalogState {
@@ -78,22 +86,24 @@ function persist(next: CatalogState, notify = true) {
 function hydrateFromBrowser() {
   if (hydrated || typeof window === "undefined") return;
   hydrated = true;
-  const stored = readStore();
-  if (!stored.initialized) {
-    const demo = buildDemoCatalog();
-    persist(
-      {
+  try {
+    const stored = readStore();
+    if (!stored.initialized) {
+      const demo = buildDemoCatalog();
+      snapshot = {
         version: 1,
         initialized: true,
         noticeDismissed: false,
         channels: demo.channels,
         titles: demo.titles,
-      },
-      false,
-    );
-    return;
+      };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
+      return;
+    }
+    snapshot = stored;
+  } catch {
+    snapshot = emptyState();
   }
-  snapshot = stored;
 }
 
 function subscribe(listener: () => void) {
@@ -108,7 +118,15 @@ function getSnapshot() {
 }
 
 function getServerSnapshot() {
-  return emptyState();
+  return SERVER_SNAPSHOT;
+}
+
+function getClientReady() {
+  return true;
+}
+
+function getServerReady() {
+  return false;
 }
 
 function updateCatalog(updater: (prev: CatalogState) => CatalogState) {
@@ -117,7 +135,7 @@ function updateCatalog(updater: (prev: CatalogState) => CatalogState) {
 
 export function CatalogProvider({ children }: { children: ReactNode }) {
   const state = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
-  const ready = useSyncExternalStore(subscribe, () => true, () => false);
+  const ready = useSyncExternalStore(subscribe, getClientReady, getServerReady);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const applySync = useCallback(

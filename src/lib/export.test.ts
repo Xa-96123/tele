@@ -3,12 +3,10 @@ import test from "node:test";
 import * as XLSX from "xlsx";
 import { buildDemoCatalog } from "./demo-data.ts";
 import {
-  catalogToCsv,
   catalogToWorkbook,
   catalogToXlsxArrayBuffer,
-  flattenTitle,
-  TITLE_COLUMNS,
-} from "./export.ts";
+} from "./export-xlsx.ts";
+import { catalogToCsv, flattenTitle, TITLE_COLUMNS } from "./export.ts";
 
 test("flattenTitle includes identity and source links", () => {
   const { titles } = buildDemoCatalog();

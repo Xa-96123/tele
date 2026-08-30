@@ -25,7 +25,13 @@ import {
 
 type Config = { hasServerCredentials: boolean };
 
-export function AccountPanel() {
+export function AccountPanel({
+  onUseExport,
+  onUseWeb,
+}: {
+  onUseExport?: () => void;
+  onUseWeb?: () => void;
+}) {
   const { ingestSyncResult } = useCatalog();
   const [config, setConfig] = useState<Config>({ hasServerCredentials: false });
   const [apiId, setApiId] = useState("");
@@ -286,17 +292,18 @@ export function AccountPanel() {
                 用同一个手机号打开{" "}
                 <a
                   className="text-foreground underline underline-offset-2"
-                  href="https://my.telegram.org"
+                  href="https://my.telegram.org/apps"
                   target="_blank"
                   rel="noreferrer"
                 >
-                  my.telegram.org
+                  my.telegram.org/apps
                 </a>
-                ，进入 API development tools，创建应用，复制 api_id / api_hash。
+                。若以前创建过，页面上直接就是 api_id / api_hash，不用再点创建。
               </li>
               <li>把手机号填成 Mac Telegram 使用的号码（含 +86 区号）。</li>
               <li>点发送验证码，回到 Telegram 桌面版复制数字。</li>
             </ol>
+            <ApiAppHelp onUseExport={onUseExport} onUseWeb={onUseWeb} />
             {!config.hasServerCredentials ? (
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="space-y-1.5">
@@ -464,5 +471,64 @@ export function AccountPanel() {
         )}
       </CardContent>
     </Card>
+  );
+}
+
+function ApiAppHelp({
+  onUseExport,
+  onUseWeb,
+}: {
+  onUseExport?: () => void;
+  onUseWeb?: () => void;
+}) {
+  return (
+    <div className="space-y-3 rounded-xl border border-amber-500/25 bg-amber-500/8 p-3 text-sm">
+      <p className="font-medium text-foreground">
+        创建不了应用程序？这是 my.telegram.org 的常见情况，不是影渠坏了。
+      </p>
+      <ul className="list-disc space-y-1 pl-5 text-muted-foreground">
+        <li>
+          不要只停在首页，直接打开{" "}
+          <a
+            className="text-foreground underline underline-offset-2"
+            href="https://my.telegram.org/apps"
+            target="_blank"
+            rel="noreferrer"
+          >
+            my.telegram.org/apps
+          </a>
+          。
+        </li>
+        <li>用无痕窗口，关掉翻译插件、广告拦截后再登录。</li>
+        <li>
+          应用名称填英文，例如 <code className="text-foreground">Yingqu</code>
+          ；短名称只能字母和数字，5–32 位，例如{" "}
+          <code className="text-foreground">yingqumac</code>
+          ；平台选 Desktop；网址和说明可留空。
+        </li>
+        <li>
+          每个账号通常只能有一个应用。已经有过的话，页面会直接显示
+          api_id，继续点「创建」反而会报 ERROR。
+        </li>
+        <li>
+          仍是 ERROR / 空白 / 没反应：先关掉机场/VPN，让网络尽量和手机号归属地一致，等十几分钟再试。
+        </li>
+      </ul>
+      <p className="text-muted-foreground">
+        试不通就改用网页版或桌面导出，都不需要 api_id。
+      </p>
+      <div className="flex flex-wrap gap-2">
+        {onUseWeb ? (
+          <Button variant="secondary" onClick={onUseWeb}>
+            改用网页版
+          </Button>
+        ) : null}
+        {onUseExport ? (
+          <Button variant="outline" onClick={onUseExport}>
+            改用桌面导出
+          </Button>
+        ) : null}
+      </div>
+    </div>
   );
 }
