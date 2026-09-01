@@ -254,7 +254,8 @@ export function ResourceDetail({
               <Button
                 type="button"
                 size="sm"
-                variant="ghost"
+                variant="outline"
+                className="text-destructive hover:bg-destructive/10 hover:text-destructive"
                 disabled={busy || editing || merging}
                 onClick={() => setConfirmRemove(true)}
               >
