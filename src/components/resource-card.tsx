@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { LazyPoster } from "@/components/lazy-poster";
 import { uniqueLinkKinds, uniqueResolutions } from "@/lib/catalog";
-import { LINK_LABELS, TYPE_LABELS } from "@/lib/labels";
+import { LINK_LABELS, titlePosterUrl, TYPE_LABELS } from "@/lib/labels";
 import type { TitleRecord } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -35,7 +35,7 @@ export function ResourceCard({
       >
         <div className="relative aspect-[3/4] overflow-hidden">
           <LazyPoster
-            src={title.posterUrl}
+            src={titlePosterUrl(title)}
             fallbackId={title.id}
             letter={title.title.slice(0, 1)}
             eager={eagerPoster}

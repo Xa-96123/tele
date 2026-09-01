@@ -87,10 +87,12 @@ export function formatCloudLinksText(title: TitleRecord): string {
 }
 
 export function titlePosterUrl(title: TitleRecord): string | undefined {
-  return (
-    title.posterUrl ||
-    title.editions.find((edition) => edition.photoUrl)?.photoUrl
-  );
+  for (let index = title.editions.length - 1; index >= 0; index -= 1) {
+    const url = title.editions[index]?.photoUrl?.trim();
+    if (url) return url;
+  }
+  const fallback = title.posterUrl?.trim();
+  return fallback || undefined;
 }
 
 export function groupCloudLinks(

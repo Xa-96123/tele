@@ -11,7 +11,7 @@ import {
   titleResourceKey,
 } from "@/lib/catalog";
 import { resourceKey } from "@/lib/parser";
-import { hasCloudOrMagnetLink } from "@/lib/labels";
+import { hasCloudOrMagnetLink, titlePosterUrl } from "@/lib/labels";
 import type {
   CatalogPatch,
   CatalogState,
@@ -374,23 +374,27 @@ function assembleTitles(
     editionsByTitle.set(titleId, list);
   }
 
-  return titleRows.map((row) => ({
-    id: String(row.id ?? ""),
-    title: String(row.title ?? ""),
-    originalTitle: text(row.original_title),
-    year: int(row.year),
-    type: asResourceType(row.type),
-    genres: parseStringArray(row.genres_json),
-    douban: typeof row.douban === "number" ? row.douban : undefined,
-    imdb: typeof row.imdb === "number" ? row.imdb : undefined,
-    overview: text(row.overview),
-    director: text(row.director),
-    cast: parseStringArray(row.cast_json),
-    posterUrl: text(row.poster_url),
-    editions: editionsByTitle.get(String(row.id ?? "")) ?? [],
-    firstSeenAt: String(row.first_seen_at ?? new Date().toISOString()),
-    lastSeenAt: String(row.last_seen_at ?? new Date().toISOString()),
-  }));
+  return titleRows.map((row) => {
+    const editions = editionsByTitle.get(String(row.id ?? "")) ?? [];
+    const record: TitleRecord = {
+      id: String(row.id ?? ""),
+      title: String(row.title ?? ""),
+      originalTitle: text(row.original_title),
+      year: int(row.year),
+      type: asResourceType(row.type),
+      genres: parseStringArray(row.genres_json),
+      douban: typeof row.douban === "number" ? row.douban : undefined,
+      imdb: typeof row.imdb === "number" ? row.imdb : undefined,
+      overview: text(row.overview),
+      director: text(row.director),
+      cast: parseStringArray(row.cast_json),
+      posterUrl: text(row.poster_url),
+      editions,
+      firstSeenAt: String(row.first_seen_at ?? new Date().toISOString()),
+      lastSeenAt: String(row.last_seen_at ?? new Date().toISOString()),
+    };
+    return { ...record, posterUrl: titlePosterUrl(record) };
+  });
 }
 
 function inPlaceholders(count: number) {

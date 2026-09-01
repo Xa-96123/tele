@@ -156,10 +156,14 @@ test("combineTitles keeps keeper identity and appends editions", () => {
   dune.originalTitle = "Dune";
   dune.editions[0]!.id = "沙丘-other";
   dune.editions[0]!.channel = "other";
+  dune2.posterUrl = "https://cdn.example/stale.jpg";
+  dune2.editions[0]!.photoUrl = "https://cdn.example/stale.jpg";
+  dune.editions[0]!.photoUrl = "https://cdn.example/fresh.jpg";
   const combined = combineTitles(dune2, dune);
   assert.equal(combined.id, dune2.id);
   assert.equal(combined.title, "沙丘2");
   assert.equal(combined.year, 2024);
   assert.equal(combined.editions.length, 2);
   assert.equal(combined.originalTitle, "Dune");
+  assert.equal(combined.posterUrl, "https://cdn.example/fresh.jpg");
 });

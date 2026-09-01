@@ -1,4 +1,4 @@
-import { hasCloudOrMagnetLink } from "@/lib/labels";
+import { hasCloudOrMagnetLink, titlePosterUrl } from "@/lib/labels";
 import type { ChannelRecord, TitleRecord } from "@/lib/types";
 import { resourceKey } from "@/lib/parser";
 
@@ -48,10 +48,11 @@ export function combineTitles(
     originalTitle: preferText(keeper.originalTitle, extra.originalTitle),
     overview: preferText(keeper.overview, extra.overview),
     director: preferText(keeper.director, extra.director),
-    posterUrl:
-      keeper.posterUrl ||
-      extra.posterUrl ||
-      extra.editions.find((edition) => edition.photoUrl)?.photoUrl,
+    posterUrl: titlePosterUrl({
+      ...keeper,
+      editions,
+      posterUrl: keeper.posterUrl || extra.posterUrl,
+    }),
     year: keeper.year ?? extra.year,
     douban:
       Math.max(keeper.douban ?? 0, extra.douban ?? 0) ||

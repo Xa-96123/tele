@@ -137,8 +137,7 @@ export function flattenTitle(title: TitleRecord): TitleFlat {
     douban: title.douban ?? "",
     imdb: title.imdb ?? "",
     overview: title.overview ?? "",
-    posterUrl:
-      title.posterUrl ?? editions.find((e) => e.photoUrl)?.photoUrl ?? "",
+    posterUrl: titlePosterUrl(title) ?? "",
     editionCount: editions.length,
     seasons: uniqueJoin(editions.map((e) => e.season)),
     episodes: uniqueJoin(editions.map((e) => e.episodes)),

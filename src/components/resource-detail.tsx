@@ -25,7 +25,7 @@ import {
 } from "@/components/ui/sheet";
 import { fetchTitleList } from "@/lib/catalog-remote";
 import { formatDateTime, posterStyle } from "@/lib/format";
-import { LINK_LABELS, TYPE_LABELS } from "@/lib/labels";
+import { LINK_LABELS, titlePosterUrl, TYPE_LABELS } from "@/lib/labels";
 import type { SourceLink, TitleRecord } from "@/lib/types";
 
 function shortenLink(link: SourceLink): string {
@@ -111,6 +111,7 @@ export function ResourceDetail({
 
   if (!title) return null;
   const current = title;
+  const posterUrl = titlePosterUrl(title);
 
   async function onSave() {
     const trimmed = name.trim();
@@ -160,12 +161,12 @@ export function ResourceDetail({
       >
         <div
           className="relative h-40 shrink-0"
-          style={title.posterUrl ? undefined : posterStyle(title.id)}
+          style={posterUrl ? undefined : posterStyle(title.id)}
         >
-          {title.posterUrl ? (
+          {posterUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
-              src={title.posterUrl}
+              src={posterUrl}
               alt=""
               className="size-full object-cover"
             />

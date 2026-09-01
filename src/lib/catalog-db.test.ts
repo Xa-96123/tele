@@ -454,3 +454,37 @@ test("edit, merge and remove titles in sqlite", () => {
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("read titles prefer the last edition photo over a stale posterUrl", () => {
+  const { file, dir } = tempDb();
+  try {
+    replaceCatalogState(
+      {
+        ...catalog,
+        titles: [
+          {
+            ...title,
+            posterUrl: "https://cdn.example/old.jpg",
+            editions: [
+              { ...edition, id: "e-old", photoUrl: "https://cdn.example/old.jpg" },
+              {
+                ...edition,
+                id: "e-new",
+                messageId: 99,
+                postUrl: "https://t.me/aliyun_4k/99",
+                photoUrl: "https://cdn.example/new.jpg",
+              },
+            ],
+          },
+        ],
+      },
+      file,
+    );
+    const loaded = readTitleById("t1", file);
+    assert.equal(loaded?.editions.at(-1)?.photoUrl, "https://cdn.example/new.jpg");
+    assert.equal(loaded?.posterUrl, "https://cdn.example/new.jpg");
+  } finally {
+    closeCatalogDb(file);
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
