@@ -119,6 +119,7 @@ CREATE TABLE IF NOT EXISTS links (
 
 CREATE INDEX IF NOT EXISTS idx_titles_name ON titles(title);
 CREATE INDEX IF NOT EXISTS idx_titles_year ON titles(year);
+CREATE INDEX IF NOT EXISTS idx_titles_last_seen ON titles(last_seen_at);
 CREATE INDEX IF NOT EXISTS idx_editions_title ON editions(title_id);
 CREATE INDEX IF NOT EXISTS idx_editions_channel ON editions(channel);
 CREATE INDEX IF NOT EXISTS idx_links_edition ON links(edition_id);
@@ -144,6 +145,9 @@ function migrateCatalogSchema(db: SqliteDb) {
     CREATE UNIQUE INDEX IF NOT EXISTS idx_titles_resource_key
       ON titles(resource_key) WHERE resource_key IS NOT NULL AND resource_key != ''
   `);
+  db.exec(
+    "CREATE INDEX IF NOT EXISTS idx_titles_last_seen ON titles(last_seen_at)",
+  );
 }
 
 function asResourceType(value: unknown): TitleRecord["type"] {
@@ -392,7 +396,10 @@ function inPlaceholders(count: number) {
   return Array.from({ length: count }, () => "?").join(", ");
 }
 
-function hydrateTitlesFromRows(db: SqliteDb, titleRows: TitleRow[]): TitleRecord[] {
+function hydrateTitlesFromRows(
+  db: SqliteDb,
+  titleRows: TitleRow[],
+): TitleRecord[] {
   if (!titleRows.length) return [];
   const ids = titleRows.map((row) => String(row.id ?? "")).filter(Boolean);
   if (!ids.length) return [];
@@ -1018,5 +1025,75 @@ export function catalogTableCounts(filePath?: string) {
     titles: count("titles"),
     editions: count("editions"),
     links: count("links"),
+  };
+}
+
+export function readTitlesByIds(ids: string[], filePath?: string): TitleRecord[] {
+  const unique = [...new Set(ids.map((id) => id.trim()).filter(Boolean))];
+  if (!unique.length) return [];
+  const db = getCatalogDb(filePath);
+  const titleRows = db
+    .prepare(
+      `SELECT * FROM titles WHERE id IN (${inPlaceholders(unique.length)})`,
+    )
+    .all(...unique) as TitleRow[];
+  const assembled = hydrateTitlesFromRows(db, titleRows);
+  const byId = new Map(assembled.map((title) => [title.id, title]));
+  return ids
+    .map((id) => byId.get(id))
+    .filter((title): title is TitleRecord => Boolean(title));
+}
+
+export function readTitleById(
+  id: string,
+  filePath?: string,
+): TitleRecord | undefined {
+  return readTitlesByIds([id], filePath)[0];
+}
+
+export function readCatalogShell(filePath?: string): CatalogState & {
+  titleCount: number;
+} {
+  const db = getCatalogDb(filePath);
+  const meta = new Map(
+    (db.prepare("SELECT key, value FROM meta").all() as MetaRow[]).map(
+      (row) => [row.key, row.value],
+    ),
+  );
+  const channelRows = db
+    .prepare("SELECT * FROM channels ORDER BY position ASC, username ASC")
+    .all() as ChannelRow[];
+  const shareable = db
+    .prepare(
+      `
+      SELECT COUNT(*) AS n FROM titles t
+      WHERE t.id IN (
+        SELECT e.title_id FROM editions e
+        INNER JOIN links l ON l.edition_id = e.id
+        WHERE l.kind IN ('magnet','quark','aliyun','baidu','115','123pan','pikpak','mega','google')
+      )
+    `,
+    )
+    .get() as { n: number };
+  return {
+    version: 1,
+    initialized: meta.get("initialized") === "1",
+    noticeDismissed: meta.get("notice_dismissed") === "1",
+    channels: channelRows.map(mapChannelRow),
+    titles: [],
+    titleCount: Number(shareable.n) || 0,
+  };
+}
+
+export function setNoticeDismissedInSqlite(
+  dismissed: boolean,
+  filePath?: string,
+): CatalogPatch {
+  const db = getCatalogDb(filePath);
+  upsertMeta(db, "initialized", "1");
+  upsertMeta(db, "notice_dismissed", dismissed ? "1" : "0");
+  return {
+    initialized: true,
+    noticeDismissed: dismissed,
   };
 }

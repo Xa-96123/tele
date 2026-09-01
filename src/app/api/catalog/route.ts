@@ -1,22 +1,41 @@
 import { NextRequest } from "next/server";
+import { hasCloudOrMagnetLink } from "@/lib/labels";
 import { isCatalogState } from "@/lib/catalog-storage";
 import {
   catalogTableCounts,
   defaultCatalogDbPath,
+  readCatalogShell,
   readCatalogState,
   replaceCatalogState,
 } from "@/lib/catalog-db";
 
 export const runtime = "nodejs";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const full =
+    request.nextUrl.searchParams.get("full") === "1" ||
+    request.nextUrl.searchParams.get("full") === "true";
   try {
-    const state = readCatalogState();
+    if (full) {
+      const state = readCatalogState();
+      return Response.json({
+        ok: true,
+        store: "sqlite",
+        file: defaultCatalogDbPath(),
+        counts: catalogTableCounts(),
+        titleCount: state.titles.filter(hasCloudOrMagnetLink).length,
+        state,
+      });
+    }
+
+    const shell = readCatalogShell();
+    const { titleCount, ...state } = shell;
     return Response.json({
       ok: true,
       store: "sqlite",
       file: defaultCatalogDbPath(),
       counts: catalogTableCounts(),
+      titleCount,
       state,
     });
   } catch (error) {
@@ -40,7 +59,15 @@ export async function PUT(request: NextRequest) {
   }
 
   try {
-    replaceCatalogState(state);
+    const incoming = state;
+    const existing = catalogTableCounts();
+    if (incoming.titles.length === 0 && existing.titles > 0) {
+      return Response.json(
+        { error: "拒绝用空片库覆盖本机已有影片。" },
+        { status: 409 },
+      );
+    }
+    replaceCatalogState(incoming);
     return Response.json({
       ok: true,
       store: "sqlite",

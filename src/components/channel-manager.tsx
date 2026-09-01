@@ -31,6 +31,7 @@ import {
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { DEMO_IMPORT_SAMPLE } from "@/lib/demo-data";
+import { fetchCatalogFromServer } from "@/lib/catalog-remote";
 import { TelegramWebPanel } from "@/components/telegram-web-panel";
 import {
   catalogExcelFilename,
@@ -102,6 +103,17 @@ export function ChannelManager() {
     setSyncingAll(true);
     await syncAll();
     setSyncingAll(false);
+  }
+
+  async function withFullCatalog(
+    run: (catalog: typeof state) => void | Promise<void>,
+  ) {
+    const remote = await fetchCatalogFromServer({ full: true });
+    if (!remote.ok || !remote.state) {
+      toast.error(remote.error || "读取完整片库失败");
+      return;
+    }
+    await run(remote.state);
   }
 
   if (!ready) {
@@ -315,11 +327,13 @@ export function ChannelManager() {
           <Button
             variant="outline"
             onClick={() =>
-              downloadText(
-                "yingqu-catalog.json",
-                JSON.stringify(state, null, 2),
-                "application/json",
-              )
+              void withFullCatalog((catalog) => {
+                downloadText(
+                  "yingqu-catalog.json",
+                  JSON.stringify(catalog, null, 2),
+                  "application/json",
+                );
+              })
             }
           >
             <Download data-icon="inline-start" />
@@ -328,11 +342,17 @@ export function ChannelManager() {
           <Button
             variant="outline"
             onClick={() =>
-              downloadText(
-                "yingqu-catalog.csv",
-                catalogToCsv(state.titles),
-                "text/csv;charset=utf-8",
-              )
+              void withFullCatalog((catalog) => {
+                if (catalog.titles.length === 0) {
+                  toast.error("没有可导出的影片");
+                  return;
+                }
+                downloadText(
+                  "yingqu-catalog.csv",
+                  catalogToCsv(catalog.titles),
+                  "text/csv;charset=utf-8",
+                );
+              })
             }
           >
             <Download data-icon="inline-start" />
@@ -340,27 +360,26 @@ export function ChannelManager() {
           </Button>
           <Button
             variant="outline"
-            onClick={() => {
-              if (state.titles.length === 0) {
-                toast.error("没有可导出的影片");
-                return;
-              }
-              void import("@/lib/export-xlsx")
-                .then(({ downloadCatalogExcel }) => {
+            onClick={() =>
+              void withFullCatalog(async (catalog) => {
+                if (catalog.titles.length === 0) {
+                  toast.error("没有可导出的影片");
+                  return;
+                }
+                try {
+                  const { downloadCatalogExcel } = await import("@/lib/export-xlsx");
                   downloadCatalogExcel(
-                    state.titles,
-                    catalogExcelFilename(state.titles.length),
+                    catalog.titles,
+                    catalogExcelFilename(catalog.titles.length),
                   );
-                  toast.success(
-                    `已导出 ${state.titles.length} 部影片到 Excel`,
-                  );
-                })
-                .catch((error) => {
+                  toast.success(`已导出 ${catalog.titles.length} 部影片到 Excel`);
+                } catch (error) {
                   toast.error(
                     error instanceof Error ? error.message : "导出失败",
                   );
-                });
-            }}
+                }
+              })
+            }
           >
             <Download data-icon="inline-start" />
             导出 Excel

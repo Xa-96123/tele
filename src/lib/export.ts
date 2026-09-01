@@ -16,10 +16,12 @@ export const SUMMARY_BASE_COLUMNS = [
 
 export function summaryColumns(titles: TitleRecord[]) {
   const kinds = cloudKindsInTitles(titles);
-  const linkColumns = kinds.map((kind) => ({
-    key: kind,
-    label: LINK_LABELS[kind],
-  }));
+  const linkColumns: Array<{ key: string; label: string }> = kinds.map(
+    (kind) => ({
+      key: kind,
+      label: LINK_LABELS[kind],
+    }),
+  );
   if (titles.some((title) => collectMagnetLinks(title).length > 0)) {
     linkColumns.push({ key: "magnet", label: LINK_LABELS.magnet });
   }

@@ -1,10 +1,12 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { FileSpreadsheet, Search, Store } from "lucide-react";
 import { toast } from "sonner";
 import { useCatalog } from "@/components/catalog-provider";
+import { InfiniteSentinel } from "@/components/infinite-sentinel";
 import { ResourceDetail } from "@/components/resource-detail";
+import { useTitleList } from "@/components/use-title-list";
 import { XianyuListingDialog } from "@/components/xianyu-listing-dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -20,59 +22,57 @@ import {
 } from "@/components/ui/table";
 import { LazyPoster } from "@/components/lazy-poster";
 import { catalogExcelFilename } from "@/lib/export";
+import { fetchTitleList } from "@/lib/catalog-remote";
 import {
-  cloudKindsInTitles,
-  collectCloudLinks,
+  CLOUD_LINK_KINDS,
   collectMagnetLinks,
   groupCloudLinks,
-  hasCloudOrMagnetLink,
   LINK_LABELS,
   titlePosterUrl,
   type CloudLinkKind,
 } from "@/lib/labels";
 import type { SourceLink, TitleRecord } from "@/lib/types";
 
-function matchesQuery(title: TitleRecord, query: string): boolean {
-  if (!query) return true;
-  const hay = [
-    title.title,
-    ...collectCloudLinks(title).flatMap((link) => [
-      link.url,
-      LINK_LABELS[link.kind] ?? link.kind,
-    ]),
-    ...collectMagnetLinks(title).map((link) => link.url),
-  ]
-    .join(" ")
-    .toLowerCase();
-  return hay.includes(query);
-}
+const STATS_PAGE_SIZE = 40;
 
 export function StatsView() {
-  const { ready, state, selectedId, setSelectedId, selectedTitle } =
-    useCatalog();
+  const {
+    ready,
+    state,
+    catalogRevision,
+    selectedId,
+    setSelectedId,
+    selectedTitle,
+    rememberTitles,
+  } = useCatalog();
   const [query, setQuery] = useState("");
   const [picked, setPicked] = useState<Set<string>>(() => new Set());
   const [listingIds, setListingIds] = useState<string[]>([]);
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return state.titles.filter(
-      (title) => hasCloudOrMagnetLink(title) && matchesQuery(title, q),
-    );
-  }, [query, state.titles]);
-  const linkKinds = useMemo(() => cloudKindsInTitles(filtered), [filtered]);
-  const showMagnet = useMemo(
-    () => filtered.some((title) => collectMagnetLinks(title).length > 0),
-    [filtered],
+  const list = useTitleList({ q: query }, catalogRevision, {
+    pageSize: STATS_PAGE_SIZE,
+  });
+
+  useEffect(() => {
+    rememberTitles(list.titles);
+  }, [list.titles, rememberTitles]);
+
+  const linkKinds = CLOUD_LINK_KINDS.filter((kind) =>
+    list.kinds.includes(kind),
   );
-  const visibleSelected = filtered.filter((title) => picked.has(title.id));
+  const showMagnet = list.kinds.includes("magnet");
+  const visibleSelected = list.titles.filter((title) => picked.has(title.id));
   const allVisibleSelected =
-    filtered.length > 0 && visibleSelected.length === filtered.length;
+    list.titles.length > 0 && visibleSelected.length === list.titles.length;
   const listingTitles = useMemo(
     () =>
       listingIds
-        .map((id) => state.titles.find((title) => title.id === id))
+        .map(
+          (id) =>
+            state.titles.find((title) => title.id === id) ??
+            list.titles.find((title) => title.id === id),
+        )
         .filter((title): title is TitleRecord => Boolean(title)),
-    [listingIds, state.titles],
+    [list.titles, listingIds, state.titles],
   );
 
   if (!ready) {
@@ -91,7 +91,7 @@ export function StatsView() {
   function toggleAll(next: boolean) {
     setPicked((current) => {
       const copy = new Set(current);
-      for (const title of filtered) {
+      for (const title of list.titles) {
         if (next) copy.add(title.id);
         else copy.delete(title.id);
       }
@@ -108,12 +108,25 @@ export function StatsView() {
   }
 
   async function exportExcel() {
-    const rows = visibleSelected.length > 0 ? visibleSelected : filtered;
-    if (rows.length === 0) {
-      toast.error("没有可导出的影片");
-      return;
-    }
     try {
+      let rows: TitleRecord[] = [];
+      if (visibleSelected.length > 0) {
+        rows = visibleSelected;
+      } else {
+        const exported = await fetchTitleList(
+          { q: query, offset: 0, limit: 5000 },
+          { purpose: "export" },
+        );
+        if (!exported.ok) {
+          toast.error(exported.error);
+          return;
+        }
+        rows = exported.titles;
+      }
+      if (rows.length === 0) {
+        toast.error("没有可导出的影片");
+        return;
+      }
       const { downloadSummaryExcel } = await import("@/lib/export-xlsx");
       downloadSummaryExcel(rows, catalogExcelFilename(rows.length));
       toast.success(
@@ -132,7 +145,7 @@ export function StatsView() {
             汇总
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            只列出有网盘或磁力的影片。勾选后可上架闲鱼。表格含海报、片名和分列链接，不含简介。数据在本机 SQLite。
+            只列出有网盘或磁力的影片，按页从 SQLite 读取。勾选本页后可上架闲鱼。表格含海报、片名和分列链接，不含简介。
           </p>
         </div>
         <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-center lg:w-auto">
@@ -156,14 +169,16 @@ export function StatsView() {
           </Button>
           <Button
             variant="outline"
-            onClick={exportExcel}
-            disabled={filtered.length === 0}
+            onClick={() => void exportExcel()}
+            disabled={list.total === 0 && visibleSelected.length === 0}
           >
             <FileSpreadsheet data-icon="inline-start" />
             导出 Excel
             {visibleSelected.length > 0
               ? `（${visibleSelected.length}）`
-              : `（${filtered.length}）`}
+              : list.total > 0
+                ? `（${list.total}）`
+                : ""}
           </Button>
         </div>
       </div>
@@ -173,7 +188,10 @@ export function StatsView() {
           <CardTitle className="text-base">
             影片列表
             <span className="ml-2 text-sm font-normal text-muted-foreground">
-              当前 {filtered.length} / {state.titles.length} 部
+              当前 {list.total} / {list.shareableTotal} 部
+              {list.titles.length < list.total
+                ? `，已显示 ${list.titles.length} 部`
+                : ""}
               {visibleSelected.length > 0
                 ? `，已选 ${visibleSelected.length} 部`
                 : ""}
@@ -181,31 +199,44 @@ export function StatsView() {
           </CardTitle>
         </CardHeader>
         <CardContent className="px-0">
-          {filtered.length === 0 ? (
+          {list.loading ? (
+            <div className="h-40 bg-muted" />
+          ) : list.error ? (
+            <div className="px-6 py-16 text-center">
+              <p className="font-heading text-lg">汇总读取失败</p>
+              <p className="mt-2 text-sm text-muted-foreground">{list.error}</p>
+            </div>
+          ) : list.total === 0 ? (
             <div className="px-6 py-16 text-center">
               <p className="font-heading text-lg">
-                {state.titles.length === 0
+                {list.shareableTotal === 0
                   ? "片库还是空的"
                   : "没有符合搜索的影片"}
               </p>
               <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">
-                {state.titles.length === 0
+                {list.shareableTotal === 0
                   ? "到「频道」页添加 Telegram 频道或导入桌面导出。没有网盘或磁力的不会出现在这里。"
                   : "试试清除关键词，或换一组片名、网盘或磁力链接。"}
               </p>
             </div>
           ) : (
-            <TitleTable
-              titles={filtered}
-              linkKinds={linkKinds}
-              showMagnet={showMagnet}
-              picked={picked}
-              allSelected={allVisibleSelected}
-              onToggleAll={toggleAll}
-              onToggleOne={toggleOne}
-              onOpen={(id) => setSelectedId(id)}
-              onList={(id) => openListing([id])}
-            />
+            <>
+              <TitleTable
+                titles={list.titles}
+                linkKinds={linkKinds}
+                showMagnet={showMagnet}
+                picked={picked}
+                allSelected={allVisibleSelected}
+                onToggleAll={toggleAll}
+                onToggleOne={toggleOne}
+                onOpen={(id) => setSelectedId(id)}
+                onList={(id) => openListing([id])}
+              />
+              <InfiniteSentinel
+                remaining={list.remaining}
+                onVisible={list.loadMore}
+              />
+            </>
           )}
         </CardContent>
       </Card>
@@ -256,7 +287,7 @@ function TitleTable({
           <TableHead className="w-10 pl-4">
             <Checkbox
               checked={allSelected}
-              aria-label="全选当前列表"
+              aria-label="全选本页"
               onCheckedChange={(value) => onToggleAll(value === true)}
             />
           </TableHead>

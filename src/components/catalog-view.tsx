@@ -1,11 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Search, SlidersHorizontal } from "lucide-react";
 import { useCatalog } from "@/components/catalog-provider";
 import { InfiniteSentinel } from "@/components/infinite-sentinel";
 import { ResourceCard } from "@/components/resource-card";
 import { ResourceDetail } from "@/components/resource-detail";
+import { useTitleList } from "@/components/use-title-list";
 import { XianyuListingDialog } from "@/components/xianyu-listing-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,88 +17,39 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { uniqueLinkKinds, uniqueResolutions } from "@/lib/catalog";
-import { hasCloudOrMagnetLink, LINK_LABELS, QUALITY_OPTIONS, TYPE_LABELS } from "@/lib/labels";
-import type { TitleRecord } from "@/lib/types";
+import { TITLE_PAGE_SIZE } from "@/lib/catalog-list-params";
+import { LINK_LABELS, QUALITY_OPTIONS, TYPE_LABELS } from "@/lib/labels";
+import type { TitleRecord, TitleSortKey } from "@/lib/types";
 
-type SortKey = "recent" | "year" | "title" | "douban";
-
-const PAGE_SIZE = 24;
 const EAGER_POSTERS = 8;
 
 export function CatalogView() {
-  const { ready, state, selectedId, setSelectedId, selectedTitle } =
-    useCatalog();
+  const {
+    ready,
+    state,
+    catalogRevision,
+    setSelectedId,
+    selectedId,
+    selectedTitle,
+    rememberTitles,
+  } = useCatalog();
   const [query, setQuery] = useState("");
   const [type, setType] = useState("all");
   const [year, setYear] = useState("all");
   const [quality, setQuality] = useState("all");
   const [source, setSource] = useState("all");
   const [channel, setChannel] = useState("all");
-  const [sort, setSort] = useState<SortKey>("recent");
+  const [sort, setSort] = useState<TitleSortKey>("recent");
   const [listingTitle, setListingTitle] = useState<TitleRecord | null>(null);
-  const [shown, setShown] = useState(PAGE_SIZE);
-
-  const years = useMemo(() => {
-    return [
-      ...new Set(
-        state.titles.map((t) => t.year).filter((y): y is number => Boolean(y)),
-      ),
-    ].sort((a, b) => b - a);
-  }, [state.titles]);
-
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    const rows = state.titles.filter((title) => {
-      if (!hasCloudOrMagnetLink(title)) return false;
-      if (type !== "all" && title.type !== type) return false;
-      if (year !== "all" && String(title.year) !== year) return false;
-      if (quality !== "all" && !uniqueResolutions(title).includes(quality)) {
-        return false;
-      }
-      if (source !== "all" && !uniqueLinkKinds(title).includes(source)) {
-        return false;
-      }
-      if (
-        channel !== "all" &&
-        !title.editions.some((e) => e.channel === channel)
-      ) {
-        return false;
-      }
-      if (!q) return true;
-      const hay = [
-        title.title,
-        title.originalTitle,
-        title.overview,
-        title.director,
-        title.cast.join(" "),
-        title.genres.join(" "),
-        ...title.editions.map((e) => e.channelTitle),
-      ]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase();
-      return hay.includes(q);
-    });
-
-    rows.sort((a, b) => {
-      if (sort === "year") return (b.year ?? 0) - (a.year ?? 0);
-      if (sort === "title") return a.title.localeCompare(b.title, "zh");
-      if (sort === "douban") return (b.douban ?? 0) - (a.douban ?? 0);
-      return b.lastSeenAt.localeCompare(a.lastSeenAt);
-    });
-    return rows;
-  }, [channel, quality, query, sort, source, state.titles, type, year]);
+  const list = useTitleList(
+    { q: query, type, year, quality, source, channel, sort },
+    catalogRevision,
+    { pageSize: TITLE_PAGE_SIZE },
+  );
 
   useEffect(() => {
-    setShown(PAGE_SIZE);
-  }, [channel, quality, query, sort, source, type, year]);
-
-  const visible = filtered.slice(0, shown);
-  const remaining = filtered.length - visible.length;
-  const loadMore = useCallback(() => {
-    setShown((current) => current + PAGE_SIZE);
-  }, []);
+    rememberTitles(list.titles);
+  }, [list.titles, rememberTitles]);
 
   if (!ready) {
     return <CatalogSkeleton />;
@@ -111,11 +63,11 @@ export function CatalogView() {
             片库
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            已汇总 {state.titles.filter(hasCloudOrMagnetLink).length} 部有网盘或磁力的影片，筛选出 {filtered.length} 部
-            {visible.length < filtered.length
-              ? `，已显示 ${visible.length} 部`
+            已汇总 {list.shareableTotal} 部有网盘或磁力的影片，筛选出 {list.total} 部
+            {list.titles.length < list.total
+              ? `，已显示 ${list.titles.length} 部`
               : ""}
-            。海报滑到附近再加载。片库存本机 SQLite，不写 IndexedDB。
+            。海报滑到附近再加载。按页从本机 SQLite 读取，不把整库塞进浏览器。
           </p>
         </div>
         <div className="relative w-full md:max-w-sm">
@@ -150,7 +102,7 @@ export function CatalogView() {
           label="年份"
           items={[
             { value: "all", label: "全部年份" },
-            ...years.map((y) => ({ value: String(y), label: String(y) })),
+            ...list.years.map((y) => ({ value: String(y), label: String(y) })),
           ]}
         />
         <FilterSelect
@@ -188,7 +140,7 @@ export function CatalogView() {
         />
         <FilterSelect
           value={sort}
-          onChange={(v) => setSort(v as SortKey)}
+          onChange={(v) => setSort(v as TitleSortKey)}
           label="排序"
           items={[
             { value: "recent", label: "最近出现" },
@@ -220,11 +172,31 @@ export function CatalogView() {
         )}
       </div>
 
-      {filtered.length === 0 ? (
-        <EmptyCatalog hasData={state.titles.length > 0} />
+      {list.loading ? (
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+          {Array.from({ length: 10 }).map((_, i) => (
+            <div
+              key={i}
+              className="overflow-hidden rounded-xl bg-card ring-1 ring-foreground/10"
+            >
+              <div className="aspect-[3/4] bg-muted" />
+              <div className="space-y-2 p-3">
+                <div className="h-4 w-3/4 rounded bg-muted" />
+                <div className="h-3 w-1/2 rounded bg-muted" />
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : list.error ? (
+        <div className="rounded-xl border border-dashed px-6 py-16 text-center">
+          <p className="font-heading text-lg">片库读取失败</p>
+          <p className="mt-2 text-sm text-muted-foreground">{list.error}</p>
+        </div>
+      ) : list.total === 0 ? (
+        <EmptyCatalog hasData={list.shareableTotal > 0} />
       ) : (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-          {visible.map((title, index) => (
+          {list.titles.map((title, index) => (
             <ResourceCard
               key={title.id}
               title={title}
@@ -233,7 +205,7 @@ export function CatalogView() {
               onList={() => setListingTitle(title)}
             />
           ))}
-          <InfiniteSentinel remaining={remaining} onVisible={loadMore} />
+          <InfiniteSentinel remaining={list.remaining} onVisible={list.loadMore} />
         </div>
       )}
 

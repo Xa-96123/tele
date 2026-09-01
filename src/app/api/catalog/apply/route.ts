@@ -8,6 +8,7 @@ import {
   markChannelErrorInSqlite,
   removeChannelFromSqlite,
   replaceCatalogState,
+  setNoticeDismissedInSqlite,
 } from "@/lib/catalog-db";
 import type { CatalogState, SyncResult } from "@/lib/types";
 
@@ -21,6 +22,7 @@ export async function POST(request: NextRequest) {
     result?: SyncResult;
     text?: string;
     message?: string;
+    dismissed?: boolean;
     state?: unknown;
   };
   try {
@@ -79,6 +81,11 @@ export async function POST(request: NextRequest) {
         body.username,
         body.message || "同步失败",
       );
+      return Response.json({ ok: true, patch });
+    }
+
+    if (body.type === "notice") {
+      const patch = setNoticeDismissedInSqlite(body.dismissed !== false);
       return Response.json({ ok: true, patch });
     }
 

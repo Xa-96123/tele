@@ -20,6 +20,7 @@ import {
 } from "@/lib/catalog-storage";
 import {
   fetchCatalogFromServer,
+  fetchTitleById,
   postCatalogApply,
   putCatalogToServer,
 } from "@/lib/catalog-remote";
@@ -66,9 +67,11 @@ type CatalogContextValue = {
   ready: boolean;
   state: CatalogState;
   historyProgress: Record<string, HistoryProgress>;
+  catalogRevision: number;
   selectedId: string | null;
   setSelectedId: (id: string | null) => void;
   selectedTitle: TitleRecord | null;
+  rememberTitles: (titles: TitleRecord[]) => void;
   addAndSync: (username: string) => Promise<boolean>;
   addAccountAndSync: (username: string, peerId?: string) => Promise<boolean>;
   syncOne: (
@@ -112,6 +115,7 @@ let dirtyDuringHydrate = false;
 let persistFailedToastShown = false;
 let hydratePromise: Promise<void> | null = null;
 let persistChain: Promise<void> = Promise.resolve();
+let catalogRevision = 0;
 
 function channelKey(username: string) {
   return username.trim().toLowerCase();
@@ -170,6 +174,24 @@ function getServerProgress() {
   return EMPTY_PROGRESS;
 }
 
+function getRevisionSnapshot() {
+  return catalogRevision;
+}
+
+function getServerRevision() {
+  return 0;
+}
+
+function bumpCatalogRevision() {
+  catalogRevision += 1;
+}
+
+function rememberTitles(titles: TitleRecord[]) {
+  if (!titles.length) return;
+  snapshot = applyCatalogPatch(snapshot, { titles });
+  publish();
+}
+
 function markSyncing(username: string, next: boolean) {
   const key = channelKey(username);
   const has = syncingUsernames.has(key);
@@ -191,30 +213,11 @@ function markSyncing(username: string, next: boolean) {
   publish();
 }
 
-function persist(next: CatalogState, notify = true) {
-  try {
-    const pruned = pruneUnshareable(next);
-    snapshot = clientReady ? compactCatalog(pruned) : pruned;
-  } catch {
-    snapshot = next;
-  }
-  if (!clientReady) dirtyDuringHydrate = true;
-  if (notify) {
-    try {
-      publish();
-    } catch {
-      // listeners must not break persist
-    }
-  }
-  if (typeof window === "undefined" || !clientReady) return;
-  schedulePersist();
-}
-
 function schedulePersist() {
   persistChain = persistChain
     .catch(() => undefined)
     .then(async () => {
-      const remote = await putCatalogToServer(snapshot);
+      const remote = await putCatalogToServer(compactCatalog(snapshot));
       if (remote.ok) {
         persistFailedToastShown = false;
         await deleteBrowserCatalog();
@@ -230,11 +233,15 @@ function schedulePersist() {
 function adoptServerState(state: CatalogState | undefined) {
   if (!state) return;
   try {
-    snapshot = pruneUnshareable(state);
+    snapshot = pruneUnshareable({
+      ...state,
+      titles: state.titles.length ? state.titles : snapshot.titles,
+    });
   } catch {
     snapshot = state;
   }
   if (!clientReady) dirtyDuringHydrate = true;
+  bumpCatalogRevision();
   publish();
   if (typeof window !== "undefined" && clientReady) {
     void deleteBrowserCatalog();
@@ -243,7 +250,24 @@ function adoptServerState(state: CatalogState | undefined) {
 
 function adoptServerPatch(patch: CatalogPatch | undefined) {
   if (!patch) return;
-  adoptServerState(applyCatalogPatch(snapshot, patch));
+  const next = applyCatalogPatch(snapshot, patch);
+  const shouldBump = Boolean(
+    patch.titles?.length ||
+      patch.channels?.length ||
+      patch.removedChannel ||
+      patch.removedTitleIds?.length,
+  );
+  try {
+    snapshot = pruneUnshareable(next);
+  } catch {
+    snapshot = next;
+  }
+  if (!clientReady) dirtyDuringHydrate = true;
+  if (shouldBump) bumpCatalogRevision();
+  publish();
+  if (typeof window !== "undefined" && clientReady) {
+    void deleteBrowserCatalog();
+  }
 }
 
 function adoptServerResult(data: {
@@ -306,10 +330,19 @@ function hydrateFromBrowser() {
       if (!remote.ok) {
         throw new Error(remote.error || "读取本机片库失败");
       }
-      if (dirtyDuringHydrate && snapshot.initialized) {
+      const serverHasCatalog =
+        Boolean(remote.state?.initialized) ||
+        (remote.titleCount ?? 0) > 0 ||
+        (remote.state?.channels.length ?? 0) > 0 ||
+        (remote.counts?.titles ?? 0) > 0;
+      if (dirtyDuringHydrate && snapshot.initialized && snapshot.titles.length > 0) {
         writeSqlite = true;
-      } else if (remote.state?.initialized) {
-        snapshot = pruneUnshareable(remote.state);
+      } else if (serverHasCatalog) {
+        snapshot = {
+          ...(remote.state ?? emptyState()),
+          initialized: true,
+          titles: [],
+        };
       } else {
         const browser = await loadCatalog();
         snapshot =
@@ -319,14 +352,15 @@ function hydrateFromBrowser() {
         writeSqlite = true;
       }
     } catch {
-      writeSqlite = true;
+      writeSqlite = false;
       try {
         const loaded = await loadCatalog();
-        if (dirtyDuringHydrate && snapshot.initialized) {
-          // keep the in-memory mutation
+        if (dirtyDuringHydrate && snapshot.initialized && snapshot.titles.length > 0) {
+          writeSqlite = true;
         } else if (loaded.status === "ready") {
           snapshot = pruneUnshareable(loaded.state);
-        } else {
+          writeSqlite = true;
+        } else if (!snapshot.initialized) {
           snapshot = { ...emptyState(), initialized: true };
         }
         toast.error("读不到本机 SQLite，正在把浏览器里的旧片库迁过去。");
@@ -367,10 +401,6 @@ function getServerReady() {
   return false;
 }
 
-function updateCatalog(updater: (prev: CatalogState) => CatalogState) {
-  persist(updater(snapshot));
-}
-
 export function CatalogProvider({ children }: { children: ReactNode }) {
   const state = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
   const ready = useSyncExternalStore(subscribe, getClientReady, getServerReady);
@@ -379,11 +409,29 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
     getProgressSnapshot,
     getServerProgress,
   );
+  const catalogRevision = useSyncExternalStore(
+    subscribe,
+    getRevisionSnapshot,
+    getServerRevision,
+  );
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   useEffect(() => {
     void hydrateFromBrowser();
   }, []);
+
+  useEffect(() => {
+    if (!selectedId) return;
+    if (state.titles.some((title) => title.id === selectedId)) return;
+    let cancelled = false;
+    void fetchTitleById(selectedId).then((result) => {
+      if (cancelled || !result.ok) return;
+      rememberTitles([result.title]);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedId, state.titles]);
 
   const syncOne = useCallback(
     async (username: string, more = false, untilEnd = false) => {
@@ -682,7 +730,19 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const dismissNotice = useCallback(() => {
-    updateCatalog((prev) => ({ ...prev, noticeDismissed: true }));
+    snapshot = { ...snapshot, noticeDismissed: true };
+    publish();
+    void postCatalogApply({ type: "notice", dismissed: true }).then(
+      (applied) => {
+        if (!applied.ok) {
+          snapshot = { ...snapshot, noticeDismissed: false };
+          publish();
+          toast.error(applied.error || "未能保存说明关闭状态");
+          return;
+        }
+        adoptServerResult(applied);
+      },
+    );
   }, []);
 
   const selectedTitle = useMemo(
@@ -695,9 +755,11 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
       ready,
       state,
       historyProgress,
+      catalogRevision,
       selectedId,
       setSelectedId,
       selectedTitle,
+      rememberTitles,
       addAndSync,
       addAccountAndSync,
       syncOne,
@@ -711,6 +773,7 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
       ready,
       state,
       historyProgress,
+      catalogRevision,
       selectedId,
       selectedTitle,
       addAndSync,

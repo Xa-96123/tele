@@ -103,6 +103,30 @@ export type CatalogState = {
   titles: TitleRecord[];
 };
 
+export type TitleSortKey = "recent" | "year" | "title" | "douban";
+
+export type TitleListQuery = {
+  q?: string;
+  type?: string;
+  year?: string;
+  quality?: string;
+  source?: string;
+  channel?: string;
+  sort?: TitleSortKey;
+  offset?: number;
+  limit?: number;
+};
+
+export type TitleListResult = {
+  titles: TitleRecord[];
+  total: number;
+  shareableTotal: number;
+  offset: number;
+  limit: number;
+  years: number[];
+  kinds: LinkKind[];
+};
+
 export type CatalogPatch = {
   initialized?: boolean;
   noticeDismissed?: boolean;
