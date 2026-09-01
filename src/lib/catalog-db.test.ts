@@ -9,9 +9,14 @@ import {
   applySyncToSqlite,
   catalogTableCounts,
   closeCatalogDb,
+  editTitleInSqlite,
   emptyCatalogState,
+  mergeTitlesInSqlite,
+  readCatalogShell,
   readCatalogState,
+  readTitleById,
   removeChannelFromSqlite,
+  removeTitleFromSqlite,
   replaceCatalogState,
 } from "./catalog-db.ts";
 import type { CatalogState, Edition, SyncResult, TitleRecord } from "./types.ts";
@@ -351,6 +356,99 @@ test("replaceCatalogState overwrites previous rows", () => {
       links: 0,
     });
     assert.equal(readCatalogState(file).titles.length, 0);
+  } finally {
+    closeCatalogDb(file);
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("edit, merge and remove titles in sqlite", () => {
+  const { file, dir } = tempDb();
+  try {
+    const dune: TitleRecord = {
+      ...title,
+      id: "t-dune",
+      title: "沙丘",
+      originalTitle: "Dune",
+      year: 2021,
+      lastSeenAt: "2026-02-01T00:00:00.000Z",
+      editions: [
+        {
+          ...edition,
+          id: "e-dune",
+          channel: "magnet_house",
+          channelTitle: "磁力仓库",
+          messageId: 11,
+          postUrl: "https://t.me/magnet_house/11",
+          resolution: "1080p",
+          links: [{ kind: "magnet", url: "magnet:?xt=urn:btih:abcd" }],
+        },
+      ],
+    };
+    replaceCatalogState(
+      {
+        ...catalog,
+        channels: [
+          ...catalog.channels,
+          {
+            username: "magnet_house",
+            title: "磁力仓库",
+            description: "",
+            addedAt: "2026-02-01T00:00:00.000Z",
+            postCount: 1,
+            resourceCount: 1,
+            status: "idle",
+          },
+        ],
+        titles: [title, dune],
+      },
+      file,
+    );
+
+    const renamed = editTitleInSqlite("t1", { title: "沙丘：第二部" }, file);
+    assert.equal(renamed.titles?.[0]?.title, "沙丘：第二部");
+    assert.equal(readTitleById("t1", file)?.title, "沙丘：第二部");
+
+    const absorbed = editTitleInSqlite("t1", { title: "沙丘", year: 2021 }, file);
+    assert.deepEqual(absorbed.removedTitleIds, ["t-dune"]);
+    assert.equal(absorbed.titles?.[0]?.title, "沙丘");
+    assert.equal(absorbed.titles?.[0]?.year, 2021);
+    assert.equal(absorbed.titles?.[0]?.editions.length, 2);
+    assert.equal(readTitleById("t-dune", file), undefined);
+    assert.equal(readCatalogShell(file).titleCount, 1);
+
+    replaceCatalogState(
+      {
+        ...catalog,
+        channels: [
+          ...catalog.channels,
+          {
+            username: "magnet_house",
+            title: "磁力仓库",
+            description: "",
+            addedAt: "2026-02-01T00:00:00.000Z",
+            postCount: 1,
+            resourceCount: 1,
+            status: "idle",
+          },
+        ],
+        titles: [title, dune],
+      },
+      file,
+    );
+    const merged = mergeTitlesInSqlite("t-dune", "t1", file);
+    assert.equal(merged.removedTitleIds?.[0], "t-dune");
+    assert.equal(merged.titles?.[0]?.title, "沙丘2");
+    assert.equal(merged.titles?.[0]?.editions.length, 2);
+
+    const removed = removeTitleFromSqlite("t1", file);
+    assert.deepEqual(removed.removedTitleIds, ["t1"]);
+    assert.equal(readCatalogShell(file).titleCount, 0);
+    assert.equal(
+      readCatalogState(file).channels.find((item) => item.username === "aliyun_4k")
+        ?.resourceCount,
+      0,
+    );
   } finally {
     closeCatalogDb(file);
     rmSync(dir, { recursive: true, force: true });

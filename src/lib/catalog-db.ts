@@ -3,6 +3,7 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import { compactCatalog, compactTitle } from "@/lib/catalog-storage";
 import {
+  combineTitles,
   mergeCatalog,
   mergeTitles,
   nextHistoryCursor,
@@ -1000,6 +1001,199 @@ export function markChannelErrorInSqlite(
   return {
     channels: [{ ...existing, status: "error", lastError: message }],
   };
+}
+
+function channelNamesFromTitle(title: TitleRecord) {
+  return title.editions.map((edition) => edition.channel);
+}
+
+function refreshChannelCounts(
+  db: SqliteDb,
+  usernames: string[],
+  filePath?: string,
+): ChannelRecord[] {
+  const seen = new Set<string>();
+  const channels: ChannelRecord[] = [];
+  for (const username of usernames) {
+    const key = username.trim().toLowerCase();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    const existing = readChannelRecord(username, filePath);
+    if (!existing) continue;
+    const resourceCount = countChannelResources(db, existing.username);
+    db.prepare(
+      "UPDATE channels SET resource_count = ? WHERE lower(username) = lower(?)",
+    ).run(resourceCount, existing.username);
+    channels.push({ ...existing, resourceCount });
+  }
+  return channels;
+}
+
+function absorbTitleInto(
+  db: SqliteDb,
+  fromId: string,
+  into: TitleRecord,
+) {
+  db.prepare("UPDATE editions SET title_id = ? WHERE title_id = ?").run(
+    into.id,
+    fromId,
+  );
+  db.prepare("DELETE FROM titles WHERE id = ?").run(fromId);
+  upsertTitleRow(db, into);
+}
+
+export type TitleEdits = {
+  title?: string;
+  originalTitle?: string | null;
+  year?: number | null;
+  type?: TitleRecord["type"];
+};
+
+export function editTitleInSqlite(
+  id: string,
+  edits: TitleEdits,
+  filePath?: string,
+): CatalogPatch {
+  const current = readTitleById(id, filePath);
+  if (!current) {
+    throw new Error("找不到这部影片。");
+  }
+  const nextTitle = edits.title?.trim() ?? current.title;
+  if (!nextTitle) {
+    throw new Error("片名不能为空。");
+  }
+  const nextType =
+    edits.type !== undefined ? asResourceType(edits.type) : current.type;
+  const nextYear =
+    edits.year === undefined
+      ? current.year
+      : edits.year === null || !Number.isFinite(edits.year) || edits.year <= 0
+        ? undefined
+        : Math.trunc(edits.year);
+  const nextOriginal =
+    edits.originalTitle === undefined
+      ? current.originalTitle
+      : edits.originalTitle?.trim() || undefined;
+  const edited: TitleRecord = {
+    ...current,
+    title: nextTitle,
+    originalTitle: nextOriginal,
+    year: nextYear,
+    type: nextType,
+    lastSeenAt: new Date().toISOString(),
+  };
+  const db = getCatalogDb(filePath);
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    upsertMeta(db, "initialized", "1");
+    const key = titleResourceKey(edited);
+    const collision = db
+      .prepare(
+        "SELECT id FROM titles WHERE resource_key = ? AND id != ?",
+      )
+      .get(key, id) as { id: string } | undefined;
+    const removedTitleIds: string[] = [];
+    let stored = edited;
+    if (collision?.id) {
+      const extra = readTitleById(collision.id, filePath);
+      if (extra) {
+        stored = combineTitles(edited, extra);
+        absorbTitleInto(db, extra.id, stored);
+        removedTitleIds.push(extra.id);
+      } else {
+        upsertTitleRow(db, stored);
+      }
+    } else {
+      upsertTitleRow(db, stored);
+    }
+    const channels = refreshChannelCounts(
+      db,
+      [
+        ...channelNamesFromTitle(current),
+        ...channelNamesFromTitle(stored),
+      ],
+      filePath,
+    );
+    const titles = readTitlesByIds([stored.id], filePath);
+    db.exec("COMMIT");
+    return {
+      initialized: true,
+      titles,
+      channels,
+      removedTitleIds,
+    };
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+}
+
+export function mergeTitlesInSqlite(
+  fromId: string,
+  intoId: string,
+  filePath?: string,
+): CatalogPatch {
+  if (fromId.trim() === intoId.trim()) {
+    throw new Error("不能与自己合并。");
+  }
+  const into = readTitleById(intoId, filePath);
+  const from = readTitleById(fromId, filePath);
+  if (!into || !from) {
+    throw new Error("找不到要合并的影片。");
+  }
+  const combined = combineTitles(into, from);
+  const db = getCatalogDb(filePath);
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    upsertMeta(db, "initialized", "1");
+    absorbTitleInto(db, from.id, combined);
+    const channels = refreshChannelCounts(
+      db,
+      [...channelNamesFromTitle(into), ...channelNamesFromTitle(from)],
+      filePath,
+    );
+    const titles = readTitlesByIds([combined.id], filePath);
+    db.exec("COMMIT");
+    return {
+      initialized: true,
+      titles,
+      channels,
+      removedTitleIds: [from.id],
+    };
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+}
+
+export function removeTitleFromSqlite(
+  id: string,
+  filePath?: string,
+): CatalogPatch {
+  const current = readTitleById(id, filePath);
+  if (!current) {
+    return { removedTitleIds: [id] };
+  }
+  const db = getCatalogDb(filePath);
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    upsertMeta(db, "initialized", "1");
+    db.prepare("DELETE FROM titles WHERE id = ?").run(id);
+    const channels = refreshChannelCounts(
+      db,
+      channelNamesFromTitle(current),
+      filePath,
+    );
+    db.exec("COMMIT");
+    return {
+      initialized: true,
+      removedTitleIds: [id],
+      channels,
+    };
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
 }
 
 export function applyAndSave(

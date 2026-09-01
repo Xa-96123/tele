@@ -30,6 +30,42 @@ export function titleResourceKey(title: TitleRecord): string {
   });
 }
 
+export function combineTitles(
+  keeper: TitleRecord,
+  extra: TitleRecord,
+): TitleRecord {
+  const editionIds = new Set(keeper.editions.map((edition) => edition.id));
+  const editions = [...keeper.editions];
+  for (const edition of extra.editions) {
+    if (editionIds.has(edition.id)) continue;
+    editions.push(edition);
+    editionIds.add(edition.id);
+  }
+
+  return {
+    ...keeper,
+    editions,
+    originalTitle: preferText(keeper.originalTitle, extra.originalTitle),
+    overview: preferText(keeper.overview, extra.overview),
+    director: preferText(keeper.director, extra.director),
+    posterUrl:
+      keeper.posterUrl ||
+      extra.posterUrl ||
+      extra.editions.find((edition) => edition.photoUrl)?.photoUrl,
+    year: keeper.year ?? extra.year,
+    douban:
+      Math.max(keeper.douban ?? 0, extra.douban ?? 0) ||
+      keeper.douban ||
+      extra.douban,
+    imdb:
+      Math.max(keeper.imdb ?? 0, extra.imdb ?? 0) || keeper.imdb || extra.imdb,
+    genres: [...new Set([...keeper.genres, ...extra.genres])],
+    cast: [...new Set([...keeper.cast, ...extra.cast])],
+    firstSeenAt: earlierIso(keeper.firstSeenAt, extra.firstSeenAt),
+    lastSeenAt: laterIso(keeper.lastSeenAt, extra.lastSeenAt),
+  };
+}
+
 export function mergeTitles(existing: TitleRecord[]): TitleRecord[] {
   const map = new Map<string, TitleRecord>();
 
@@ -45,29 +81,7 @@ export function mergeTitles(existing: TitleRecord[]): TitleRecord[] {
       });
       continue;
     }
-
-    const editionIds = new Set(prev.editions.map((e) => e.id));
-    for (const edition of title.editions) {
-      if (!editionIds.has(edition.id)) {
-        prev.editions.push(edition);
-        editionIds.add(edition.id);
-      }
-    }
-
-    prev.originalTitle = preferText(prev.originalTitle, title.originalTitle);
-    prev.overview = preferText(prev.overview, title.overview);
-    prev.director = preferText(prev.director, title.director);
-    prev.posterUrl = prev.posterUrl || title.posterUrl;
-    prev.year = prev.year ?? title.year;
-    prev.douban = Math.max(prev.douban ?? 0, title.douban ?? 0) || prev.douban || title.douban;
-    prev.imdb = Math.max(prev.imdb ?? 0, title.imdb ?? 0) || prev.imdb || title.imdb;
-    prev.genres = [...new Set([...prev.genres, ...title.genres])];
-    prev.cast = [...new Set([...prev.cast, ...title.cast])];
-    prev.firstSeenAt = earlierIso(prev.firstSeenAt, title.firstSeenAt);
-    prev.lastSeenAt = laterIso(prev.lastSeenAt, title.lastSeenAt);
-    if (!prev.posterUrl) {
-      prev.posterUrl = title.editions.find((e) => e.photoUrl)?.photoUrl;
-    }
+    map.set(key, combineTitles(prev, title));
   }
 
   return [...map.values()]

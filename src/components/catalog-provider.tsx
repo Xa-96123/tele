@@ -83,6 +83,17 @@ type CatalogContextValue = {
   importText: (text: string) => Promise<boolean>;
   ingestSyncResult: (result: SyncResult, more?: boolean) => Promise<boolean>;
   removeChannel: (username: string) => Promise<void>;
+  editTitle: (
+    id: string,
+    edits: {
+      title: string;
+      originalTitle?: string | null;
+      year?: number | null;
+      type: TitleRecord["type"];
+    },
+  ) => Promise<boolean>;
+  mergeTitleInto: (fromId: string, intoId: string) => Promise<boolean>;
+  removeTitle: (id: string) => Promise<boolean>;
   dismissNotice: () => void;
 };
 
@@ -729,6 +740,66 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
     toast.success("已移除频道及相关片源");
   }, []);
 
+  const editTitle = useCallback(
+    async (
+      id: string,
+      edits: {
+        title: string;
+        originalTitle?: string | null;
+        year?: number | null;
+        type: TitleRecord["type"];
+      },
+    ) => {
+      const applied = await postCatalogApply({
+        type: "edit-title",
+        id,
+        title: edits.title,
+        originalTitle: edits.originalTitle,
+        year: edits.year,
+        titleType: edits.type,
+      });
+      if (!applied.ok || (!applied.patch && !applied.state)) {
+        toast.error(applied.error || "保存失败");
+        return false;
+      }
+      adoptServerResult(applied);
+      const mergedCount = applied.patch?.removedTitleIds?.length ?? 0;
+      toast.success(
+        mergedCount > 0 ? "已保存，并与另一张同名卡片合并" : "已保存",
+      );
+      return true;
+    },
+    [],
+  );
+
+  const mergeTitleInto = useCallback(async (fromId: string, intoId: string) => {
+    const applied = await postCatalogApply({
+      type: "merge-titles",
+      fromId,
+      intoId,
+    });
+    if (!applied.ok || (!applied.patch && !applied.state)) {
+      toast.error(applied.error || "合并失败");
+      return false;
+    }
+    adoptServerResult(applied);
+    setSelectedId(intoId);
+    toast.success("已把另一部的版本并入这部");
+    return true;
+  }, []);
+
+  const removeTitle = useCallback(async (id: string) => {
+    const applied = await postCatalogApply({ type: "remove-title", id });
+    if (!applied.ok || (!applied.patch && !applied.state)) {
+      toast.error(applied.error || "未能丢掉这部");
+      return false;
+    }
+    adoptServerResult(applied);
+    setSelectedId(null);
+    toast.success("已从片库丢掉这部，频道还在");
+    return true;
+  }, []);
+
   const dismissNotice = useCallback(() => {
     snapshot = { ...snapshot, noticeDismissed: true };
     publish();
@@ -767,6 +838,9 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
       importText,
       ingestSyncResult,
       removeChannel,
+      editTitle,
+      mergeTitleInto,
+      removeTitle,
       dismissNotice,
     }),
     [
@@ -783,6 +857,9 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
       importText,
       ingestSyncResult,
       removeChannel,
+      editTitle,
+      mergeTitleInto,
+      removeTitle,
       dismissNotice,
     ],
   );

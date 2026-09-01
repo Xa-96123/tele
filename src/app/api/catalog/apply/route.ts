@@ -5,12 +5,15 @@ import { parsePlainPosts } from "@/lib/parser";
 import {
   applyImportToSqlite,
   applySyncToSqlite,
+  editTitleInSqlite,
   markChannelErrorInSqlite,
+  mergeTitlesInSqlite,
   removeChannelFromSqlite,
+  removeTitleFromSqlite,
   replaceCatalogState,
   setNoticeDismissedInSqlite,
 } from "@/lib/catalog-db";
-import type { CatalogState, SyncResult } from "@/lib/types";
+import type { CatalogState, SyncResult, TitleRecord } from "@/lib/types";
 
 export const runtime = "nodejs";
 
@@ -23,6 +26,13 @@ export async function POST(request: NextRequest) {
     text?: string;
     message?: string;
     dismissed?: boolean;
+    id?: string;
+    fromId?: string;
+    intoId?: string;
+    title?: string;
+    originalTitle?: string | null;
+    year?: number | null;
+    titleType?: TitleRecord["type"];
     state?: unknown;
   };
   try {
@@ -86,6 +96,35 @@ export async function POST(request: NextRequest) {
 
     if (body.type === "notice") {
       const patch = setNoticeDismissedInSqlite(body.dismissed !== false);
+      return Response.json({ ok: true, patch });
+    }
+
+    if (body.type === "edit-title") {
+      if (!body.id) {
+        return Response.json({ error: "缺少影片。" }, { status: 400 });
+      }
+      const patch = editTitleInSqlite(body.id, {
+        title: body.title,
+        originalTitle: body.originalTitle,
+        year: body.year,
+        type: body.titleType,
+      });
+      return Response.json({ ok: true, patch });
+    }
+
+    if (body.type === "merge-titles") {
+      if (!body.fromId || !body.intoId) {
+        return Response.json({ error: "请选择要合并的两部影片。" }, { status: 400 });
+      }
+      const patch = mergeTitlesInSqlite(body.fromId, body.intoId);
+      return Response.json({ ok: true, patch });
+    }
+
+    if (body.type === "remove-title") {
+      if (!body.id) {
+        return Response.json({ error: "缺少影片。" }, { status: 400 });
+      }
+      const patch = removeTitleFromSqlite(body.id);
       return Response.json({ ok: true, patch });
     }
 

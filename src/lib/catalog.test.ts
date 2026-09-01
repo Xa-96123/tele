@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  combineTitles,
   historyFetchMore,
   mergeTitles,
   nextHistoryCursor,
@@ -13,7 +14,7 @@ import type { Edition, TitleRecord } from "./types.ts";
 
 function titleWithLinks(
   name: string,
-  kinds: Array<"quark" | "magnet" | "telegram" | "other">,
+    kinds: Array<"quark" | "aliyun" | "magnet" | "telegram" | "other">,
 ): TitleRecord {
   const edition: Edition = {
     id: `${name}-1`,
@@ -28,7 +29,9 @@ function titleWithLinks(
           ? `magnet:?xt=urn:btih:${"a".repeat(40)}`
           : kind === "quark"
             ? `https://pan.quark.cn/s/${name}`
-            : `https://t.me/demo/${index + 2}`,
+            : kind === "aliyun"
+              ? `https://www.alipan.com/s/${name}`
+              : `https://t.me/demo/${index + 2}`,
     })),
     rawText: name,
   };
@@ -143,4 +146,20 @@ test("recountChannel keeps explicit postCount from extras", () => {
   );
   assert.equal(counted.resourceCount, 1);
   assert.equal(counted.postCount, 3);
+});
+
+test("combineTitles keeps keeper identity and appends editions", () => {
+  const dune2 = titleWithLinks("沙丘2", ["quark"]);
+  dune2.year = 2024;
+  const dune = titleWithLinks("沙丘", ["aliyun"]);
+  dune.year = 2021;
+  dune.originalTitle = "Dune";
+  dune.editions[0]!.id = "沙丘-other";
+  dune.editions[0]!.channel = "other";
+  const combined = combineTitles(dune2, dune);
+  assert.equal(combined.id, dune2.id);
+  assert.equal(combined.title, "沙丘2");
+  assert.equal(combined.year, 2024);
+  assert.equal(combined.editions.length, 2);
+  assert.equal(combined.originalTitle, "Dune");
 });
